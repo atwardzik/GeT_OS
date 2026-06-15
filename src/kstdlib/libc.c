@@ -8,35 +8,16 @@
 
 #include <stdarg.h>
 
-/*
- * Syscalls
- */
-
 #define STR_HELPER(x) #x
 #define STR(x) STR_HELPER(x)
 #define SYSCALL(syscall_number) __asm__("svc   #" STR(syscall_number) "\n\r");
 
 
-int write(int file, const void *buf, int len) {
-        int res;
-
-        __asm__("svc    #5\n\r");
-        __asm__("mov    %0, r0\n\r" : "=r"(res));
-
-        return res;
-}
-
-int read(int file, void *buf, int len) {
-        int res;
-
-        __asm__("svc    #4\n\r");
-        __asm__("mov    %0, r0\n\r" : "=r"(res));
-
-        return res;
-}
-
-
 void exit(int code) { SYSCALL(EXIT_SVC) }
+
+/*
+ * process syscalls
+ */
 
 pid_t spawnp(
         void (*process_entry_ptr)(void), const spawn_file_actions_t *file_actions, const spawnattr_t *attrp,
@@ -79,6 +60,28 @@ pid_t wait(int *stat_loc) {
         return ret;
 }
 
+
+/*
+ * file syscalls
+ */
+
+int write(int file, const void *buf, int len) {
+        int res;
+
+        __asm__("svc    #5\n\r");
+        __asm__("mov    %0, r0\n\r" : "=r"(res));
+
+        return res;
+}
+
+int read(int file, void *buf, int len) {
+        int res;
+
+        __asm__("svc    #4\n\r");
+        __asm__("mov    %0, r0\n\r" : "=r"(res));
+
+        return res;
+}
 
 int open(const char *name, int flags, int mode) {
         int ret;
@@ -146,6 +149,10 @@ char *getcwd(char *buf, unsigned int len) {
 }
 
 
+/*
+ * network syscalls
+ */
+
 int socket(int domain, int type, int protocol) {
         int ret;
         SYSCALL(SOCKET_SVC)
@@ -185,6 +192,7 @@ int connect(int sockfd, const struct sockaddr *addr, size_t adrlen) {
 
         return ret;
 }
+
 
 /*
  * string
@@ -335,7 +343,7 @@ char *strchr(const char *str, const int ch) {
 
         for (size_t i = 0; i < strlen(str) + 1; ++i) {
                 if (str[i] == (char) ch) {
-                        return str + i;
+                        return (char *) &str[i];
                 }
         }
 
@@ -438,119 +446,6 @@ unsigned long strtoul(const char *str, char **str_end, int base) {
         return value;
 }
 
-int vdprintf(int fd, const char *format, va_list vlist) {
-        if (strcspn(format, "%") == strlen(format)) {
-                write(fd, format, strlen(format));
-                return 0;
-        }
-
-        const char *const format_end = format + strlen(format);
-
-        const char *ptr_begin = format;
-        const char *ptr_end = format;
-        while (*ptr_end && ptr_end < format_end) {
-                ptr_end += strcspn(ptr_begin, "%");
-
-                int len = ptr_end - ptr_begin;
-                write(fd, ptr_begin, len);
-
-                ptr_end += 1;
-                if (ptr_end == format_end) {
-                        break;
-                }
-                switch (*ptr_end) {
-                        case 'c': {
-                                int c = va_arg(vlist, int);
-                                char buf[1] = {(char) c};
-                                write(fd, buf, 1);
-                                break;
-                        }
-                        case 's': {
-                                const char *str = va_arg(vlist, const char *);
-                                write(fd, str, strlen(str));
-                                break;
-                        }
-                        case 'i': {
-                                char buf[20] = {};
-                                itoa(va_arg(vlist, int), buf, 10);
-                                write(fd, buf, strlen(buf));
-                                break;
-                        }
-                        case 'x': {
-                                char buf[20] = {};
-                                itoa(va_arg(vlist, int), buf, 16);
-                                write(fd, buf, strlen(buf));
-                                break;
-                        }
-                        default:
-                                return -1;
-                }
-                ptr_end += 1;
-
-
-                ptr_begin = ptr_end;
-        }
-
-        return 0;
-}
-
-
-/**
- * Simple printf allowing %c, %s and %i, %x parameters. Currently unsafe, as the behaviour
- * is undefined with not enough parameters supplied.
- *
- * @param format - formatting string
- * @param ... - parameters
- */
-int printf(const char *format, ...) {
-        va_list args;
-        va_start(args, format);
-
-        const int res = vdprintf(1, format, args);
-
-        va_end(args);
-        return res;
-}
-
-int dprintf(int fd, const char *format, ...) {
-        va_list args;
-        va_start(args, format);
-
-        const int res = vdprintf(fd, format, args);
-
-        va_end(args);
-        return res;
-}
-
-
-void *memcpy(void *dest, const void *src, const unsigned int count) {
-        for (unsigned int i = 0; i < count; ++i) {
-                *((char *) dest + i) = *((const char *) src + i);
-        }
-
-        return dest;
-}
-
-void *memset(void *dest, const int ch, const unsigned int count) {
-        for (unsigned int i = 0; i < count; ++i) {
-                *((char *) dest + i) = (unsigned char) ch;
-        }
-
-        return dest;
-}
-
-int memcmp(const void *dest, const void *src, const unsigned int count) {
-        for (size_t i = 0; i < count; ++i) {
-                const char left = *((const char *) dest + i);
-                const char right = *((const char *) src + i);
-
-                if (left != right) {
-                        return left - right;
-                }
-        }
-
-        return 0;
-}
 
 int optind = 1;
 const char *optargs = nullptr;
@@ -608,4 +503,169 @@ int getopt(int argc, char *const argv[], const char *optstring) {
         }
 
         return current_parameter;
+}
+
+
+/*
+ * printf
+ */
+
+int vdprintf(int fd, const char *format, va_list vlist) {
+        if (strcspn(format, "%") == strlen(format)) {
+                write(fd, format, strlen(format));
+                return 0;
+        }
+
+        const char *const format_end = format + strlen(format);
+
+        const char *ptr_begin = format;
+        const char *ptr_end = format;
+        while (*ptr_end && ptr_end < format_end) {
+                ptr_end += strcspn(ptr_begin, "%");
+
+                int len = ptr_end - ptr_begin;
+                write(fd, ptr_begin, len);
+
+                ptr_end += 1;
+                if (ptr_end == format_end) {
+                        break;
+                }
+                switch (*ptr_end) {
+                        case 'c': {
+                                int c = va_arg(vlist, int);
+                                char buf[1] = {(char) c};
+                                write(fd, buf, 1);
+                                break;
+                        }
+                        case 's': {
+                                const char *str = va_arg(vlist, const char *);
+                                write(fd, str, strlen(str));
+                                break;
+                        }
+                        case 'i': {
+                                char buf[20] = {};
+                                itoa(va_arg(vlist, int), buf, 10);
+                                write(fd, buf, strlen(buf));
+                                break;
+                        }
+                        case 'x': {
+                                char buf[20] = {};
+                                itoa(va_arg(vlist, int), buf, 16);
+                                write(fd, buf, strlen(buf));
+                                break;
+                        }
+                        default:
+                                return -1;
+                }
+                ptr_end += 1;
+
+
+                ptr_begin = ptr_end;
+        }
+
+        return 0;
+}
+
+/**
+ * Simple printf allowing %c, %s and %i, %x parameters. Currently unsafe, as the behaviour
+ * is undefined with not enough parameters supplied.
+ *
+ * @param format - formatting string
+ * @param ... - parameters
+ */
+int printf(const char *format, ...) {
+        va_list args;
+        va_start(args, format);
+
+        const int res = vdprintf(1, format, args);
+
+        va_end(args);
+        return res;
+}
+
+int dprintf(int fd, const char *format, ...) {
+        va_list args;
+        va_start(args, format);
+
+        const int res = vdprintf(fd, format, args);
+
+        va_end(args);
+        return res;
+}
+
+
+/*
+ * memory
+ */
+
+void *memcpy(void *dest, const void *src, const unsigned int count) {
+        for (unsigned int i = 0; i < count; ++i) {
+                *((char *) dest + i) = *((const char *) src + i);
+        }
+
+        return dest;
+}
+
+void *memset(void *dest, const int ch, const unsigned int count) {
+        for (unsigned int i = 0; i < count; ++i) {
+                *((char *) dest + i) = (unsigned char) ch;
+        }
+
+        return dest;
+}
+
+int memcmp(const void *dest, const void *src, const unsigned int count) {
+        for (size_t i = 0; i < count; ++i) {
+                const char left = *((const char *) dest + i);
+                const char right = *((const char *) src + i);
+
+                if (left != right) {
+                        return left - right;
+                }
+        }
+
+        return 0;
+}
+
+void *malloc(size_t size) {
+        return nullptr;
+}
+
+void free(void *ptr) {}
+
+/*
+ * networking
+ */
+
+inline uint16_t htons(uint16_t hostshort) {
+        return (hostshort >> 8) | ((hostshort & 0xff) << 8);
+}
+
+int inet_aton(const char *host_address, struct in_addr *inp) {
+        char octet[4] = {};
+
+        int j = 0;
+        int octet_index = 0;
+        for (int i = 0; i < 4; ++i) {
+                while (host_address[j] && host_address[j] != '.') {
+                        octet[octet_index] = host_address[j];
+
+                        j += 1;
+                        octet_index += 1;
+                }
+
+                if (host_address[j] == '.' || (host_address[j] == 0 && i == 3)) {
+                        j += 1;
+                        octet[octet_index] = 0;
+                        uint8_t o = strtoul(octet, nullptr, 10);
+                        ((unsigned char *) &inp->s_addr)[i] = o;
+                        octet_index = 0;
+                }
+
+                if (host_address[j] == 0 && i < 3) {
+                        return 0;
+                }
+        }
+
+        return 1;
 }

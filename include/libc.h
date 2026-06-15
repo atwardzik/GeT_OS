@@ -142,17 +142,22 @@ sighandler_t signal(int signum, sighandler_t handler);
 pid_t wait(int *stat_loc);
 
 /* Network Syscalls */
+struct in_addr {
+        uint32_t s_addr;
+};
+
 struct sockaddr_in {
-        uint16_t sin_family;
+        int16_t sin_family;
         uint16_t sin_port;
-        char sin_addr[6];
-        char zeroes[4];
+        struct in_addr sin_addr;
+        char sin_zero[8];
 };
 
 struct sockaddr {
         uint16_t sa_family;
         char sa_data[14];
 };
+
 
 int socket(int domain, int type, int protocol);
 
@@ -163,6 +168,7 @@ int listen(int sockfd, int backlog);
 int accept(int sockfd, struct sockaddr *addr, size_t addrlen);
 
 int connect(int sockfd, const struct sockaddr *addr, size_t adrlen);
+
 
 /*
  * string
@@ -198,18 +204,6 @@ char *itoa(int value, char *str, int base);
 
 unsigned long strtoul(const char *str, char **str_end, int base);
 
-int vdprintf(int fd, const char *format, va_list vlist);
-
-int printf(const char *format, ...);
-
-int dprintf(int fd, const char *format, ...);
-
-void *memset(void *dest, int ch, unsigned int count);
-
-void *memcpy(void *dest, const void *src, unsigned int count);
-
-int memcmp(const void *dest, const void *src, unsigned int count);
-
 int getopt(int argc, char *const argv[], const char *optstring);
 
 static inline bool isprint(const int c) {
@@ -231,5 +225,40 @@ static inline char tolower(const char c) {
 
         return c;
 }
+
+
+/*
+ * memory
+ */
+
+void *memset(void *dest, int ch, unsigned int count);
+
+void *memcpy(void *dest, const void *src, unsigned int count);
+
+int memcmp(const void *dest, const void *src, unsigned int count);
+
+void *malloc(size_t size);
+
+void free(void *ptr);
+
+
+/*
+ * printf
+ */
+
+int vdprintf(int fd, const char *format, va_list vlist);
+
+int printf(const char *format, ...);
+
+int dprintf(int fd, const char *format, ...);
+
+
+/*
+ * networking
+ */
+
+uint16_t htons(uint16_t hostshort);
+
+int inet_aton(const char *host_address, struct in_addr *inp);
 
 #endif // LIBC_H
