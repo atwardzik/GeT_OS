@@ -361,6 +361,7 @@ int sys_fstat(int fd, struct stat *st) {
         st->st_uid = inode->i_uid;
         st->st_gid = inode->i_gid;
         st->st_mtim.tv_sec = inode->i_mtime;
+        st->st_size = inode->i_size;
 
         return 0;
 }

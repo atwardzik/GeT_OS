@@ -4,6 +4,8 @@
 
 #include "libc.h"
 
+#include <limits.h>
+
 #include "syscall_codes.h"
 
 #include <stdarg.h>
@@ -193,7 +195,6 @@ int connect(int sockfd, const struct sockaddr *addr, size_t adrlen) {
         return ret;
 }
 
-
 /*
  * string
  */
@@ -350,6 +351,39 @@ char *strchr(const char *str, const int ch) {
         return nullptr;
 }
 
+char *strstr(const char *haystack, const char *needle) {
+        const size_t m = strlen(needle);
+        uint64_t R;
+        uint64_t pattern_mask[CHAR_MAX + 1];
+
+        if (m == 0) {
+                return (char *) haystack;
+        }
+        if (m > 63) {
+                return nullptr;
+        }
+
+        R = ~1;
+
+        for (size_t i = 0; i <= CHAR_MAX; ++i) {
+                pattern_mask[i] = 0xffff'ffff'ffff'ffff;
+        }
+        for (size_t i = 0; i < m; ++i) {
+                pattern_mask[(unsigned char) needle[i]] &= ~(1UL << i);
+        }
+
+        for (size_t i = 0; haystack[i] != '\0'; ++i) {
+                R |= pattern_mask[(unsigned char) haystack[i]];
+                R <<= 1;
+
+                if (0 == (R & (1UL << m))) {
+                        return (char *) ((haystack + i - m) + 1);
+                }
+        }
+
+        return nullptr;
+}
+
 char *strrchr(const char *str, int ch) {
         if (!str) {
                 return nullptr;
@@ -368,14 +402,14 @@ char *strrchr(const char *str, int ch) {
         return nullptr;
 }
 
-char *itoa(int value, char *const str, const int base) {
+char *itoa(uint32_t value, char *const str, const unsigned int base) {
         if (value == 0) {
                 *str = '0';
                 return str;
         }
 
         int i = 0;
-        int temp_value = value;
+        uint32_t temp_value = value;
         while (temp_value) {
                 i += 1;
                 temp_value /= base;
@@ -533,8 +567,7 @@ int vdprintf(int fd, const char *format, va_list vlist) {
                 switch (*ptr_end) {
                         case 'c': {
                                 int c = va_arg(vlist, int);
-                                char buf[1] = {(char) c};
-                                write(fd, buf, 1);
+                                write(fd, (unsigned char *) &c, 1);
                                 break;
                         }
                         case 's': {
@@ -544,13 +577,21 @@ int vdprintf(int fd, const char *format, va_list vlist) {
                         }
                         case 'i': {
                                 char buf[20] = {};
-                                itoa(va_arg(vlist, int), buf, 10);
+                                int32_t value = va_arg(vlist, int);
+                                if (value < 0) {
+                                        buf[0] = '-';
+                                        value = -value;
+                                        itoa(value, buf + 1, 10);
+                                }
+                                else {
+                                        itoa(value, buf, 10);
+                                }
                                 write(fd, buf, strlen(buf));
                                 break;
                         }
                         case 'x': {
                                 char buf[20] = {};
-                                itoa(va_arg(vlist, int), buf, 16);
+                                itoa(va_arg(vlist, uint32_t), buf, 16);
                                 write(fd, buf, strlen(buf));
                                 break;
                         }
@@ -566,9 +607,108 @@ int vdprintf(int fd, const char *format, va_list vlist) {
         return 0;
 }
 
+int vsnprintf(char *str, size_t size, const char *format, va_list vlist) {
+        if (strcspn(format, "%") == strlen(format)) {
+                if (str) {
+                        const size_t to_copy = size > strlen(format) ? strlen(format) : size;
+                        memcpy(str, format, to_copy);
+                }
+                return strlen(format);
+        }
+
+        const char *const format_end = format + strlen(format);
+
+        const char *ptr_begin = format;
+        const char *ptr_end = format;
+        size_t index = 0;
+        while (*ptr_end && ptr_end < format_end) {
+                ptr_end += strcspn(ptr_begin, "%");
+
+                unsigned int len = ptr_end - ptr_begin;
+                size_t available = size - index;
+                size_t to_copy = available > len ? len : available;
+                memcpy(str + index, ptr_begin, to_copy);
+                index += to_copy;
+                available -= len;
+
+                if (ptr_end == format_end) {
+                        break;
+                }
+                ptr_end += 1;
+
+                switch (*ptr_end) {
+                        case 'c': {
+                                int c = va_arg(vlist, int);
+                                len = 1;
+                                to_copy = available > len ? len : available;
+                                memcpy(str + index, (unsigned char *) &c, to_copy);
+                                break;
+                        }
+                        case 's': {
+                                const char *appended_str = va_arg(vlist, const char *);
+                                len = strlen(appended_str);
+                                to_copy = available > len ? len : available;
+                                memcpy(str + index, appended_str, to_copy);
+                                break;
+                        }
+                        case 'i': {
+                                char buf[21] = {};
+                                int32_t value = va_arg(vlist, int32_t);
+                                if (value < 0) {
+                                        buf[0] = '-';
+                                        value = -value;
+                                        itoa(value, buf + 1, 10);
+                                }
+                                else {
+                                        itoa(value, buf, 10);
+                                }
+                                len = strlen(buf);
+                                to_copy = available > len ? len : available;
+                                memcpy(str + index, buf, to_copy);
+                                break;
+                        }
+                        case 'x': {
+                                char buf[21] = {};
+                                itoa(va_arg(vlist, uint32_t), buf, 16);
+                                len = strlen(buf);
+                                to_copy = available > len ? len : available;
+                                memcpy(str + index, buf, to_copy);
+                                break;
+                        }
+                        case 0:
+                                break;
+                        default:
+                                return -1;
+                }
+                ptr_end += 1;
+                index += to_copy;
+
+
+                ptr_begin = ptr_end;
+        }
+
+        return index;
+}
+
+int snprintf(char *str, size_t size, const char *format, ...) {
+        va_list args;
+        va_start(args, format);
+
+        const int res = vsnprintf(str, size, format, args);
+
+        va_end(args);
+        return res;
+}
+
+
 /**
  * Simple printf allowing %c, %s and %i, %x parameters. Currently unsafe, as the behaviour
  * is undefined with not enough parameters supplied.
+ *
+ * %c - is an unsigned character, 8 bits long \n
+ * %s - is a null-terminated string \n
+ * %i - is a 32-bit signed integer \n
+ * %x - is a 32-bit unsigned integer, displayed in hexadecimal format \n
  *
  * @param format - formatting string
  * @param ... - parameters
@@ -604,6 +744,32 @@ void *memcpy(void *dest, const void *src, const unsigned int count) {
         }
 
         return dest;
+}
+
+void *memmove(void *dst, const void *src, size_t len) {
+        char *d = dst;
+        const char *s = src;
+
+        if (d == s) {
+                return d;
+        }
+        if ((uintptr_t) s - (uintptr_t) d - len <= -2 * len) {
+                return memcpy(d, s, len);
+        }
+
+        if (d < s) {
+                for (; len; len--) {
+                        *d++ = *s++;
+                }
+        }
+        else {
+                while (len) {
+                        len--;
+                        d[len] = s[len];
+                }
+        }
+
+        return dst;
 }
 
 void *memset(void *dest, const int ch, const unsigned int count) {

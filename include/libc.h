@@ -86,6 +86,7 @@ struct stat {
         uid_t st_uid;
         gid_t st_gid;
         struct timespec st_mtim;
+        size_t st_size;
 };
 
 struct DirectoryEntry;
@@ -200,7 +201,9 @@ char *strchr(const char *str, int ch);
 
 char *strrchr(const char *str, int ch);
 
-char *itoa(int value, char *str, int base);
+char *strstr(const char *haystack, const char *needle);
+
+char *itoa(uint32_t value, char *const str, const unsigned int base);
 
 unsigned long strtoul(const char *str, char **str_end, int base);
 
@@ -235,6 +238,8 @@ void *memset(void *dest, int ch, unsigned int count);
 
 void *memcpy(void *dest, const void *src, unsigned int count);
 
+void *memmove(void *dst, const void *src, size_t len);
+
 int memcmp(const void *dest, const void *src, unsigned int count);
 
 void *malloc(size_t size);
@@ -247,6 +252,10 @@ void free(void *ptr);
  */
 
 int vdprintf(int fd, const char *format, va_list vlist);
+
+int vsnprintf(char *str, size_t size, const char *format, va_list vlist);
+
+int snprintf(char *str, size_t size, const char *format, ...);
 
 int printf(const char *format, ...);
 
