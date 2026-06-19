@@ -181,8 +181,6 @@ void *sys_realloc(void *ptr, size_t new_size) {
         }
 }
 
-}
-
 void kfree(void *ptr) {
         if (ptr == nullptr) {
                 return;
