@@ -325,7 +325,7 @@ static struct ProcessPage *load_pages_to_ram(const void *fbytes) {
         const Elf32_EHdr *elf_header = fbytes;
         const Elf32_PHdr *phdr_table = fbytes + elf_header->e_phoff;
 
-        unsigned int bufsz = 2 * 4096; //this has to change according to phdrs
+        unsigned int bufsz = 1024; //this has to change according to phdrs
         unsigned char *buffer = kmalloc(bufsz);
         if (!buffer) {
                 return nullptr;
@@ -333,7 +333,6 @@ static struct ProcessPage *load_pages_to_ram(const void *fbytes) {
         memset(buffer, 0, bufsz);
 
         size_t index = 0;
-        unsigned int loaded_pages_count = 0;
         for (size_t i = 0; i < elf_header->e_phnum; ++i) {
                 const Elf32_PHdr *phdr = &phdr_table[i];
                 if (phdr->p_type != PT_LOAD) {
@@ -351,13 +350,11 @@ static struct ProcessPage *load_pages_to_ram(const void *fbytes) {
                 }
 
                 memcpy(buffer + index, fbytes + phdr->p_offset, phdr->p_filesz);
-
-                loaded_pages_count += 1;
         }
 
         struct ProcessPage *ppage = kmalloc(sizeof(*ppage));
         ppage->page_ptr = buffer;
-        ppage->pages_count = loaded_pages_count;
+        ppage->page_size = bufsz;
 
         return ppage;
 }
@@ -428,6 +425,7 @@ struct Dynlib {
         Elf32_Sections sections;
         void *fbytes;
         void *static_base;
+        size_t static_base_len;
 };
 
 static int load_dynlib(struct Dynlib *dynlib) {
@@ -460,6 +458,7 @@ static int load_dynlib(struct Dynlib *dynlib) {
         dynlib->fbytes = fbytes;
         dynlib->sections = sections;
         dynlib->static_base = static_base;
+        dynlib->static_base_len = static_base_len;
         memcpy(static_base, fbytes + (uintptr_t) dynlib->sections.data, dynlib->sections.data_len);
         memset(static_base + dynlib->sections.data_len, 0, static_base_len - dynlib->sections.data_len);
         //fixme: what about .dynamic and .got.plt?
@@ -593,6 +592,7 @@ struct ProcessPage *load_exec(const void *fbytes) {
                         return nullptr; //todo: graceful error
                 }
                 ppage->static_base = dynlib.static_base;
+                ppage->static_base_len = dynlib.static_base_len;
 
                 const int res = resolve_dyn_relocations(ppage, &sections, &dynlib);
                 if (res != 0) {

@@ -59,6 +59,7 @@ struct Process {
         void *stack_page_ptr;
         void *pstack;
         void *kstack;
+        void *heap_pages[4];
         size_t allocated_memory;
 
         /* Files info */

@@ -12,11 +12,12 @@
 
 struct ProcessPage {
         void *page_ptr;
-        unsigned int pages_count;
+        size_t page_size;
 
         off_t _start_offset;
 
         void *static_base;
+        size_t static_base_len;
         //todo: add leftover memory from process pages to reuse in the heap
 };
 

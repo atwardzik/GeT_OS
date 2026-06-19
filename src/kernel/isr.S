@@ -91,7 +91,7 @@ isr_svcall:
                 sub     r0, r0, r1                              @ FIXME: similary, this will break when pid=1 gets more than 1KiB of kernel stack
                 msr     msplim, r0
 
-                bx      lr                                      @ start init (process with pid=0)
+                bx      lr                                      @ start init (process with pid=1)
 
         .standard_syscalls:
                 push    {r0-r3}

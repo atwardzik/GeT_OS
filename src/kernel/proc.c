@@ -342,6 +342,7 @@ static struct Process *create_blank_process(void (*process_entry_ptr)(void), voi
                 .stack_page_ptr = process_page,
                 .pstack = pstack,
                 .kstack = kstack,
+                .heap_pages = {},
                 .allocated_memory = DEFAULT_PROCESS_STACK_SIZE,
 
                 .parent = nullptr,
@@ -428,11 +429,21 @@ pid_t sys_spawn_process(
         struct ProcessPage *ppage = load_exec(executable_buffer);
         kfree(executable_buffer);
 
-        if (!ppage) {
+        if (!ppage || !ppage->page_ptr) {
                 return -ENOEXEC;
         }
 
         void *_start_address = (uint8_t *) ppage->page_ptr + ppage->_start_offset;
+
+        struct Process *process = create_blank_process(_start_address, ppage->static_base, argv);
+        if (!process->stack_page_ptr) {
+                return -1;
+        }
+        process->ppage = ppage;
+        if (ppage->static_base) {
+                process->allocated_memory += ppage->static_base_len;
+        }
+        process->allocated_memory += ppage->page_size;
 
 
         struct File **fdtable = kmalloc(sizeof(struct File *) * MAX_OPEN_FILE_DESCRIPTORS);
@@ -440,13 +451,6 @@ pid_t sys_spawn_process(
         for (size_t i = 0; i < MAX_OPEN_FILE_DESCRIPTORS; ++i) {
                 files.fdtable[i] = current->files.fdtable[i];
         }
-
-        struct Process *process = create_blank_process(_start_address, ppage->static_base, argv);
-        if (!process->stack_page_ptr) {
-                return -1;
-        }
-
-        process->ppage = ppage;
         process->files = files;
         process->root = current->root;
         process->pwd = current->pwd;
