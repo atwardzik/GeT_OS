@@ -102,7 +102,9 @@ static struct {
         struct Process process_idle;
 } scheduler __attribute__((section(".data")));
 
-constexpr int PID_IDLE = 0xffff;
+constexpr pid_t PID_IDLE = 0xffff;
+constexpr pid_t PID_INIT = 1;
+
 static void idle(void) { while (1); }
 
 static int create_idle_process() {
@@ -189,7 +191,7 @@ void **scheduler_get_current_process_stack(void) {
 
 
 static struct Process *scheduler_get_next_process() {
-        static size_t current_index = 0;
+        static size_t current_index = PID_INIT;
 
         if (scheduler.processes_count == 0) {
                 return nullptr;
@@ -204,7 +206,7 @@ static struct Process *scheduler_get_next_process() {
                 current_index += 1;
                 max_depth_counter += 1;
                 if (current_index == scheduler.max_processes) {
-                        current_index = 0;
+                        current_index = PID_INIT;
                 }
                 if (max_depth_counter == 2 * scheduler.max_processes) {
                         return &scheduler.process_idle;
@@ -308,7 +310,7 @@ static size_t process_stack_init_argv(void *pstack, char *const argv[]) {
 }
 
 static struct Process *create_blank_process(void (*process_entry_ptr)(void), void *static_base, char *const argv[]) {
-        static pid_t pid = 0;
+        static pid_t pid = PID_INIT;
 
         if (pid >= scheduler.max_processes) {
                 __asm__("bkpt   #0");
@@ -369,7 +371,7 @@ pid_t sys_spawnp_process(
         const spawnattr_t *attrp,
         char *const argv[], char *const envp[]
 ) {
-        if (!scheduler.processes[0].stack_page_ptr) {
+        if (!scheduler.processes[PID_INIT].stack_page_ptr) {
                 __asm__("bkpt   #0");
         }
 
@@ -415,7 +417,7 @@ pid_t sys_spawn_process(
         char *const argv[],
         char *const envp[]
 ) {
-        if (!scheduler.processes[0].stack_page_ptr) {
+        if (!scheduler.processes[PID_INIT].stack_page_ptr) {
                 __asm__("bkpt   #0");
         }
         struct Process *current = scheduler.current_process;
@@ -518,7 +520,7 @@ static struct Files setup_init_stdio(struct VFS_Inode *root) {
 
 
 pid_t create_process_init(void (*process_entry_ptr)(void), struct VFS_Inode *root) {
-        if (scheduler.current_process || scheduler.processes[0].stack_page_ptr) {
+        if (scheduler.current_process || scheduler.processes[PID_INIT].stack_page_ptr) {
                 __asm__("bkpt   #0");
         }
 
@@ -538,7 +540,7 @@ pid_t create_process_init(void (*process_entry_ptr)(void), struct VFS_Inode *roo
         }
 
         process->pstate = READY;
-        return process->pid;
+        return 0;
 }
 
 
@@ -629,8 +631,8 @@ pid_t sys_wait(int *stat_loc) {
 }
 
 void run_process_init(void) {
-        scheduler.current_process = &scheduler.processes[0];
+        scheduler.current_process = &scheduler.processes[PID_INIT];
         scheduler.current_process->pstate = RUNNING;
-        __asm__("movs   r0, #0\n\r"  // run init (pid=0)
+        __asm__("movs   r0, #1\n\r"  // run init (pid=1)
                 "svc    #0xff\n\r"); // OS_INIT_SVC
 }

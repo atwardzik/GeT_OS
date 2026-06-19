@@ -56,6 +56,9 @@ isr_svcall:
                                                                 @  Barrier after CONTROL updates
                 msr     psp, r0
                 str     r0, [r12]
+                ldr     r1, =2048
+                sub     r0, r0, r1                              @ FIXME: this will break when process with pid=1 gets more than 2KiB of stack
+                msr     psplim, r0
 
 
                 @ set PENDSV to the lowest priority level
@@ -74,6 +77,9 @@ isr_svcall:
                 ldr     r0, [r0]
                 msr     msp, r0
                 mov     lr, r4
+                ldr     r1, =1024
+                sub     r0, r0, r1                              @ FIXME: similary, this will break when pid=1 gets more than 1KiB of kernel stack
+                msr     msplim, r0
 
                 bx      lr                                      @ start init (process with pid=0)
 
