@@ -6,11 +6,10 @@
 
 #include "errno.h"
 #include "libc.h"
+#include "loader.h"
 #include "memory.h"
 #include "signal.h"
 #include "tty.h"
-#include "fs/ramfs.h"
-#include "loader.h"
 
 //TODO: processes should be better organized than a static array with fixed-position for give pid.
 
@@ -19,9 +18,9 @@
 
 static constexpr size_t INITIAL_PROCESS_COUNT = 20;
 
-static constexpr int DEFAULT_PROCESS_SIZE = 8 * 1024; // 8 [KiB]
+static constexpr int DEFAULT_PROCESS_STACK_SIZE = 2 * 1024;
 
-static constexpr off_t DEFAULT_PROCESS_SP_OFFSET = 6 * 1024;
+static constexpr off_t DEFAULT_PROCESS_SP_OFFSET = 1 * 1024;
 
 #define RECALL_STATE_FROM(sp)                           \
         __asm__(                                        \
@@ -107,7 +106,7 @@ constexpr int PID_IDLE = 0xffff;
 static void idle(void) { while (1); }
 
 static int create_idle_process() {
-        const int idle_process_size = 512;
+        const int idle_process_size = 64;
 
         void *process_page = kmalloc(idle_process_size);
         if (!process_page) {
@@ -122,13 +121,16 @@ static int create_idle_process() {
                                    EXC_RETURN_THREAD_PSP_CODE);
 
         struct Process process = {
-                .ppage = nullptr,
-                .ptr = process_page,
-                .pstack = pstack,
                 .pid = PID_IDLE,
                 .pstate = READY,
-                .allocated_memory = idle_process_size,
                 .priority_level = 0,
+                .kernel_mode = false,
+
+                .ppage = nullptr,
+                .stack_page_ptr = process_page,
+                .pstack = pstack,
+                .kstack = kstack,
+                .allocated_memory = idle_process_size,
 
                 .parent = nullptr,
                 .max_children_count = 0,
@@ -138,9 +140,6 @@ static int create_idle_process() {
                 .signal_mask = 0,
                 .pending_signals = nullptr,
                 .signal_handled = false,
-
-                .kernel_mode = false,
-                .kstack = kstack
         };
         init_default_sighandlers(&process);
 
@@ -158,7 +157,7 @@ int scheduler_init(void *current_main_kernel_stack) {
 
         scheduler.processes = processes;
         for (size_t i = 0; i < INITIAL_PROCESS_COUNT; ++i) { //TODO: this should be DYNAMIC
-                processes[i].ptr = nullptr;
+                processes[i].stack_page_ptr = nullptr;
         }
 
         scheduler.total_allocated_memory = 0;
@@ -267,11 +266,15 @@ __attribute__((optimize("omit-frame-pointer"))) void context_switch(void) {
 
 switch_to_userspace:
         process->pstate = RUNNING;
+        __asm__("msr    psplim, %0\n\r" : : "r"(process->stack_page_ptr));
+        __asm__("msr    msplim, %0\n\r" : : "r"(process->stack_page_ptr + DEFAULT_PROCESS_SP_OFFSET + 8));
         __asm__("msr    psp, %0\n\r" : : "r"(process->pstack));
         __asm__("msr    msp, %0\n\r" : : "r"(process->kstack));
         RECALL_USERSPACE_STATE
 
 switch_to_kernelspace:
+        __asm__("msr    psplim, %0\n\r" : : "r"(process->stack_page_ptr));
+        __asm__("msr    msplim, %0\n\r" : : "r"(process->stack_page_ptr + DEFAULT_PROCESS_SP_OFFSET + 8));
         __asm__("msr    psp, %0\n\r" : : "r"(process->pstack));
         __asm__("msr    msp, %0\n\r" : : "r"(process->kstack));
         RECALL_KERNELSPACE_STATE
@@ -291,6 +294,7 @@ static size_t process_stack_init_argv(void *pstack, char *const argv[]) {
         while (argv[count]) {
                 count += 1;
         }
+        count += 1; // leave nullptr at the end of argv table
 
         size_t i = 0;
         while (count) {
@@ -310,8 +314,8 @@ static struct Process *create_blank_process(void (*process_entry_ptr)(void), voi
                 __asm__("bkpt   #0");
         }
 
-        void *process_page = kmalloc(DEFAULT_PROCESS_SIZE);
-        void *kstack = process_page + DEFAULT_PROCESS_SIZE - sizeof(size_t);
+        void *process_page = kmalloc(DEFAULT_PROCESS_STACK_SIZE);
+        void *kstack = process_page + DEFAULT_PROCESS_STACK_SIZE - sizeof(size_t);
         void *pstack_begin = process_page + DEFAULT_PROCESS_SP_OFFSET - sizeof(size_t);
         size_t offset = process_stack_init_argv(pstack_begin, argv);
         void *pstack = pstack_begin - offset;
@@ -319,19 +323,24 @@ static struct Process *create_blank_process(void (*process_entry_ptr)(void), voi
                                    &exit,
                                    process_entry_ptr,
                                    EXC_RETURN_THREAD_PSP_CODE);
-        *(size_t *) (pstack_begin - offset - 28) = (size_t *) (pstack_begin - offset + sizeof(size_t)); //argv
-        *(size_t *) (pstack_begin - offset - 32) = offset / sizeof(size_t);                             //argc
+        // argv
+        *(size_t *) (pstack_begin - offset - 28) = (size_t *) (pstack_begin - offset + sizeof(size_t));
+        // argc without nullptr at the end
+        *(size_t *) (pstack_begin - offset - 32) = (offset - sizeof(size_t)) / sizeof(size_t);
 
         *(size_t *) (pstack + 28) = (uintptr_t) static_base; //r9 = static base register
 
         struct Process process = {
-                .ppage = nullptr,
-                .ptr = process_page,
-                .pstack = pstack,
                 .pid = pid,
                 .pstate = NEW,
-                .allocated_memory = DEFAULT_PROCESS_SIZE,
                 .priority_level = 0,
+                .kernel_mode = false,
+
+                .ppage = nullptr,
+                .stack_page_ptr = process_page,
+                .pstack = pstack,
+                .kstack = kstack,
+                .allocated_memory = DEFAULT_PROCESS_STACK_SIZE,
 
                 .parent = nullptr,
                 .max_children_count = 0,
@@ -342,8 +351,6 @@ static struct Process *create_blank_process(void (*process_entry_ptr)(void), voi
                 .pending_signals = nullptr,
                 .signal_handled = false,
 
-                .kernel_mode = false,
-                .kstack = kstack
         };
         init_default_sighandlers(&process);
 
@@ -362,7 +369,7 @@ pid_t sys_spawnp_process(
         const spawnattr_t *attrp,
         char *const argv[], char *const envp[]
 ) {
-        if (!scheduler.processes[0].ptr) {
+        if (!scheduler.processes[0].stack_page_ptr) {
                 __asm__("bkpt   #0");
         }
 
@@ -374,7 +381,7 @@ pid_t sys_spawnp_process(
         }
 
         struct Process *process = create_blank_process(process_entry_ptr, nullptr, argv);
-        if (!process->ptr) {
+        if (!process->stack_page_ptr) {
                 return -1;
         }
 
@@ -408,7 +415,7 @@ pid_t sys_spawn_process(
         char *const argv[],
         char *const envp[]
 ) {
-        if (!scheduler.processes[0].ptr) {
+        if (!scheduler.processes[0].stack_page_ptr) {
                 __asm__("bkpt   #0");
         }
         struct Process *current = scheduler.current_process;
@@ -433,7 +440,7 @@ pid_t sys_spawn_process(
         }
 
         struct Process *process = create_blank_process(_start_address, ppage->static_base, argv);
-        if (!process->ptr) {
+        if (!process->stack_page_ptr) {
                 return -1;
         }
 
@@ -511,13 +518,13 @@ static struct Files setup_init_stdio(struct VFS_Inode *root) {
 
 
 pid_t create_process_init(void (*process_entry_ptr)(void), struct VFS_Inode *root) {
-        if (scheduler.current_process || scheduler.processes[0].ptr) {
+        if (scheduler.current_process || scheduler.processes[0].stack_page_ptr) {
                 __asm__("bkpt   #0");
         }
 
         char *argv[] = {"init", "test", nullptr};
         struct Process *process = create_blank_process(process_entry_ptr, nullptr, argv);
-        if (!process->ptr) {
+        if (!process->stack_page_ptr) {
                 __asm__("bkpt   #0");
         }
 
@@ -554,7 +561,7 @@ void sys_exit(int status) {
 
 void sys_kill(const pid_t pid, int sig) {
         struct Process *process = &scheduler.processes[pid];
-        if (!process->ptr) {
+        if (!process->stack_page_ptr) {
                 return;
         }
 
@@ -580,7 +587,7 @@ void sys_kill(const pid_t pid, int sig) {
         kfree(process->children);
         deallocate_signal_queue(&process->pending_signals);
         deallocate_owned_inodes(&process->owned_inodes);
-        kfree(process->ptr);
+        kfree(process->stack_page_ptr);
         scheduler.total_allocated_memory -= process->allocated_memory;
         process->allocated_memory = 0;
 

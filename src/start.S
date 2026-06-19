@@ -27,9 +27,9 @@ vector_table:
 .word reset             @
 .word isr_nmi           @
 .word isr_hardfault     @
-.word isr_invalid       @ Reserved, should never fire
-.word isr_invalid       @ Reserved, should never fire
-.word isr_invalid       @ Reserved, should never fire
+.word isr_memmanage     @ Memory Protection Violation
+.word isr_busfault      @ Fault related to instruction execution
+.word isr_usagefault    @
 .word isr_invalid       @ Reserved, should never fire
 .word isr_invalid       @ Reserved, should never fire
 .word isr_invalid       @ Reserved, should never fire
@@ -55,10 +55,10 @@ irq_0_51: .fill 52, 4, 0
 
 decl_isr_bkpt isr_nmi
 decl_isr_bkpt isr_hardfault
-@ decl_isr_bkpt isr_svcall
+decl_isr_bkpt isr_memmanage
+decl_isr_bkpt isr_busfault
+decl_isr_bkpt isr_usagefault
 decl_isr_bkpt isr_invalid
-@ decl_isr_bkpt isr_pendsv
-@ decl_isr_bkpt isr_systick
 
 
 .section .reset, "ax"

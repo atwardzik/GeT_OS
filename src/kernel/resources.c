@@ -42,7 +42,7 @@ static void add_to_wait_queue(wait_queue_head_t *wq_head, struct Process *proces
 }
 
 struct Process *pop_from_wait_queue(wait_queue_head_t *wq_head) {
-        if (!wq_head || !*wq_head || !(*wq_head)->waiting_process->ptr) {
+        if (!wq_head || !*wq_head || !(*wq_head)->waiting_process->stack_page_ptr) {
                 return nullptr;
         }
 
@@ -56,7 +56,7 @@ struct Process *pop_from_wait_queue(wait_queue_head_t *wq_head) {
 }
 
 struct Process *top_from_wait_queue(wait_queue_head_t *wq_head) {
-        if (!wq_head || !*wq_head || !(*wq_head)->waiting_process->ptr) {
+        if (!wq_head || !*wq_head || !(*wq_head)->waiting_process->stack_page_ptr) {
                 return nullptr;
         }
 

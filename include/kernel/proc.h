@@ -45,34 +45,43 @@ int add_to_owned_inodes(owned_inode_head_t *head, struct VFS_Inode *inode);
 
 // TODO: by using MPU forbid process to access system resources
 struct Process {
-        struct ProcessPage *ppage;
-        void *ptr;
-        void *pstack;
+        /* General info */
+
         pid_t pid;
         enum State pstate;
-        size_t allocated_memory;
         unsigned int priority_level;
+        int exit_code;
+        bool kernel_mode;
+
+        /* Allocation info */
+
+        struct ProcessPage *ppage;
+        void *stack_page_ptr;
+        void *pstack;
+        void *kstack;
+        size_t allocated_memory;
+
+        /* Files info */
+
         struct Files files;
         struct VFS_Inode *root;
         struct VFS_Inode *pwd;
         owned_inode_head_t owned_inodes;
+
+        /* Parent and subprocesses */
 
         struct Process *parent;
         size_t max_children_count;
         size_t children_count;
         struct Process **children;
 
-        int exit_code;
 
+        /* Signals */
         uint32_t signal_mask;
         signal_queue_head_t pending_signals;
         bool signal_handled;
 
         void (*sighandlers[32])(int);
-
-
-        bool kernel_mode;
-        void *kstack;
 };
 
 typedef struct SpawnFileActions spawn_file_actions_t;
