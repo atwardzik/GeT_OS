@@ -72,6 +72,16 @@ isr_svcall:
                 ldr     r0, =625000                             @ systick every 5[ms]
                 bl      systick_enable
 
+                @ enable exceptions so that they do not escalate to hardfault
+                ldr     r0, PPB_BASE
+                ldr     r1, SHCSR
+                ldr     r2, [r0, r1]
+                mov     r3, #1
+                lsl     r3, r3, #18                             @ USGFAULTENA
+                orr     r2, r2, r3
+                str     r2, [r0, r1]
+
+
                 @ setup kernel stack for process
                 bl      scheduler_get_current_kernel_stack
                 ldr     r0, [r0]
@@ -203,6 +213,7 @@ PPB_BASE:               .word 0xe0000000
 SYST_CSR:               .word 0xe010
 SYST_RVR:               .word 0xe014
 ICSR:                   .word 0xed04
+SHCSR:                  .word 0xed24
 SYST_CVR:               .word 0xe018
 VTOR_OFFSET:            .word 0xed08
 NVIC_ICPR0_OFFSET:      .word 0xe280                    @ interrupt clear-pending register
