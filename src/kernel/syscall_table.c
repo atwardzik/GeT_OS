@@ -2,11 +2,12 @@
 // Created by Artur Twardzik on 14/11/2025.
 //
 
+#include "memory.h"
+#include "network.h"
 #include "proc.h"
 #include "signal.h"
 #include "syscall_codes.h"
 #include "fs/file.h"
-#include "kernel/network.h"
 
 typedef uint32_t (*syscall_fn)(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t);
 
@@ -35,4 +36,8 @@ syscall_fn syscall_table[] = {
         [LISTEN_SVC] = (syscall_fn) sys_listen,
         [ACCEPT_SVC] = (syscall_fn) sys_accept,
         [CONNECT_SVC] = (syscall_fn) sys_connect,
+
+        [MALLOC_SVC] = (syscall_fn) sys_malloc,
+        [REALLOC_SVC] = (syscall_fn) sys_realloc,
+        [FREE_SVC] = (syscall_fn) sys_free,
 };

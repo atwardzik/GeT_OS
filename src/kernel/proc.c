@@ -589,6 +589,12 @@ void sys_kill(const pid_t pid, int sig) {
                 kfree(process->ppage->static_base);
                 kfree(process->ppage);
         }
+        for (size_t i = 0; i < 4; ++i) {
+                if (process->heap_pages[i]) {
+                        // Technically, having to free those pointers means userspace memleak
+                        kfree(process->heap_pages[i]);
+                }
+        }
         kfree(process->files.fdtable);
         kfree(process->children);
         deallocate_signal_queue(&process->pending_signals);

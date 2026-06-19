@@ -17,9 +17,15 @@ static uint8_t *const heap_end_ptr = __heap_end__;
 
 void *kmalloc(size_t size);
 
+void *sys_malloc(size_t size);
+
 void *krealloc(void *ptr, size_t new_size);
 
+void *sys_realloc(void *ptr, size_t new_size);
+
 void kfree(void *ptr);
+
+void sys_free(void *ptr);
 
 size_t get_allocated_size(void);
 

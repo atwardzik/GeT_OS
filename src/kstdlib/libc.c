@@ -70,7 +70,7 @@ pid_t wait(int *stat_loc) {
 int write(int file, const void *buf, int len) {
         int res;
 
-        __asm__("svc    #5\n\r");
+        SYSCALL(WRITE_SVC)
         __asm__("mov    %0, r0\n\r" : "=r"(res));
 
         return res;
@@ -79,7 +79,7 @@ int write(int file, const void *buf, int len) {
 int read(int file, void *buf, int len) {
         int res;
 
-        __asm__("svc    #4\n\r");
+        SYSCALL(READ_SVC)
         __asm__("mov    %0, r0\n\r" : "=r"(res));
 
         return res;
@@ -794,10 +794,26 @@ int memcmp(const void *dest, const void *src, const unsigned int count) {
 }
 
 void *malloc(size_t size) {
-        return nullptr;
+        void *res;
+
+        SYSCALL(MALLOC_SVC)
+        __asm__("mov    %0, r0\n\r" : "=r"(res));
+
+        return res;
 }
 
-void free(void *ptr) {}
+void *realloc(void *ptr, size_t new_size) {
+        void *res;
+
+        SYSCALL(REALLOC_SVC)
+        __asm__("mov    %0, r0\n\r" : "=r"(res));
+
+        return res;
+}
+
+void free(void *ptr) {
+        SYSCALL(FREE_SVC)
+}
 
 /*
  * networking

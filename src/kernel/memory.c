@@ -5,8 +5,7 @@
 #include "memory.h"
 
 #include "libc.h"
-
-//TODO: implement krealloc
+#include "proc.h"
 
 /*
  * || ptr | size | next  | ---- | RETURNED CHUNK ||
@@ -97,6 +96,33 @@ void *kmalloc(size_t size) {
         return chunk.ptr;
 }
 
+void *sys_malloc(size_t size) {
+        struct Process *current_process = scheduler_get_current_process();
+
+        int free_heap_page_index = -1;
+        for (size_t i = 0; i < 4; ++i) {
+                if (current_process->heap_pages[i] == nullptr) {
+                        free_heap_page_index = i;
+                        break;
+                }
+        }
+        if (free_heap_page_index < 0) {
+                return nullptr;
+        }
+
+        const size_t size_before = Allocator.allocated_size;
+        void *ptr = kmalloc(size);
+        if (!ptr) {
+                return nullptr;
+        }
+        const size_t size_after = Allocator.allocated_size;
+
+        current_process->heap_pages[free_heap_page_index] = ptr;
+        current_process->allocated_memory += size_after - size_before;
+
+        return ptr;
+}
+
 static struct Chunk *find_chunk_by_ptr(const void *ptr) {
         if (ptr == nullptr) {
                 return nullptr;
@@ -118,7 +144,6 @@ static struct Chunk *find_chunk_by_ptr(const void *ptr) {
         return temp;
 }
 
-
 void *krealloc(void *ptr, size_t new_size) {
         void *new_ptr = kmalloc(new_size);
         if (!new_ptr) {
@@ -131,6 +156,31 @@ void *krealloc(void *ptr, size_t new_size) {
 
         kfree(ptr);
         return new_ptr;
+}
+
+void *sys_realloc(void *ptr, size_t new_size) {
+        if (!ptr) {
+                return sys_malloc(new_size);
+        }
+
+        struct Process *current_process = scheduler_get_current_process();
+
+        for (size_t i = 0; i < 4; ++i) {
+                if (current_process->heap_pages[i] != ptr) {
+                        continue;
+                }
+
+                const size_t size_before = Allocator.allocated_size;
+                void *new_ptr = krealloc(ptr, new_size);
+                const size_t size_after = Allocator.allocated_size;
+
+                if (new_ptr) {
+                        current_process->heap_pages[i] = new_ptr;
+                        current_process->allocated_memory += size_after - size_before;
+                }
+        }
+}
+
 }
 
 void kfree(void *ptr) {
@@ -162,6 +212,27 @@ void kfree(void *ptr) {
 
                 Allocator.allocated_chunks -= 1;
                 Allocator.allocated_size -= found_chunk_size;
+        }
+}
+
+void sys_free(void *ptr) {
+        if (!ptr) {
+                return;
+        }
+        struct Process *current_process = scheduler_get_current_process();
+
+        for (size_t i = 0; i < 4; ++i) {
+                if (current_process->heap_pages[i] != ptr) {
+                        continue;
+                }
+
+                const size_t size_before = Allocator.allocated_size;
+                kfree(ptr);
+                const size_t size_after = Allocator.allocated_size;
+
+                current_process->heap_pages[i] = nullptr;
+                current_process->allocated_memory -= size_before - size_after;
+                break;
         }
 }
 

@@ -34,6 +34,10 @@
 #define ACCEPT_SVC      33
 #define CONNECT_SVC     34
 
+#define MALLOC_SVC      40
+#define REALLOC_SVC     41
+#define FREE_SVC        42
+
 #define OS_INIT_SVC     255
 
 #endif //SYSCALL_CODES_H
