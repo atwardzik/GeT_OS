@@ -110,18 +110,20 @@ static ssize_t read_root_directory(struct File *file, void *buf, const size_t co
 }
 
 static uint16_t FAT_fetch_next_cluster(struct FAT16_SuperBlock *sb, const uint16_t current_cluster) {
+        const auto sb_op = (struct FAT16_SuperBlockOperations *) sb->sb.s_op;
+        const uint16_t current_cluster_FAT_sector = current_cluster / 256;
+        const uint16_t current_cluster_position_in_FAT_sector = current_cluster % 256;
+
         const uint16_t FAT_cached_range_start = sb->FAT_cached_sector * 256;
         const uint16_t FAT_cached_range_end = (sb->FAT_cached_sector + 1) * 256;
 
         if (FAT_cached_range_start <= current_cluster && current_cluster < FAT_cached_range_end) {
-                return sb->FAT_sector_cache[current_cluster];
+                return sb->FAT_sector_cache[current_cluster_position_in_FAT_sector];
         }
 
-        //current cluster location
-        const auto sb_op = (struct FAT16_SuperBlockOperations *) sb->sb.s_op;
-        const uint16_t current_cluster_FAT_sector = current_cluster / 256;
+
         sb_op->hd_op.read_block(sb->fat_first_sector + current_cluster_FAT_sector, 512, (char *) sb->FAT_sector_cache);
-        return sb->FAT_sector_cache[current_cluster];
+        return sb->FAT_sector_cache[current_cluster_position_in_FAT_sector];
 }
 
 static ssize_t follow_fat_chain(struct File *file, void *buf, const size_t count, const off_t file_offset) {
