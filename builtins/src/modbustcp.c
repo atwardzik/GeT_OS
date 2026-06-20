@@ -178,42 +178,33 @@ int parse_hex(const char *str, uint8_t *out, const size_t length) {
 
 int send_modbus(struct config_t *cfg) {
         // --- SOCKET SETUP ---
-#ifdef GLIBC
         const int sock = socket(AF_INET, SOCK_STREAM, 0);
         if (sock < 0) {
-                dprintf(2, BOLD RED "?? socket error ??" RESET);
+                dprintf(2, BOLD RED "?? socket error, could not open a TCP socket ??\n" RESET);
                 return 1;
         }
-        struct sockaddr_in remote;
-        memset(&remote, 0, sizeof(remote));
+        struct sockaddr_in source = {AF_INET, htons(8080)};
+        if (bind(sock, (struct sockaddr *) &source, sizeof(source)) < 0) {
+                dprintf(2, BOLD RED "?? socket error, could not bind to port %d ??\n" RESET, 8080);
+                return 1;
+        }
 
+        struct sockaddr_in remote = {0};
         remote.sin_family = AF_INET;
-
         remote.sin_port = htons(cfg->port);
-
-        if (inet_pton(AF_INET, cfg->address, &remote.sin_addr) != 1) {
+        if (inet_aton(cfg->address, &remote.sin_addr) != 1) {
                 dprintf(2, BOLD RED "?? invalid address: %s ??\n" RESET, cfg->address);
                 close(sock);
                 return 1;
         }
-#else
-sock_open:
-        const int sock = socket(AF_INET, SOCK_STREAM, 0);
-        if (sock < 0) {
-                dprintf(2, BOLD RED "?? socket error ??" RESET);
-                return 1;
-        }
-        struct sockaddr_in source = {AF_INET, 8080};
-        bind(sock, (struct sockaddr *) &source, sizeof(source));
 
-        struct sockaddr_in remote = {AF_INET, cfg->port, {192, 168, 1, 41}};
-#endif
-
-        if (connect(sock, (struct sockaddr *) &remote, sizeof(remote)) < 0) {
+        int i = 0;
+        while (connect(sock, (struct sockaddr *) &remote, sizeof(remote)) < 0 && i++ < 10) {
                 dprintf(2, BOLD RED "?? connect error ??" RESET);
-                close(sock);
-                goto sock_open;
-                // return 1;
+                if (i == 10) {
+                        dprintf(2, BOLD RED "?? host unreachable ??\n" RESET);
+                        return 1;
+                }
         }
 
 

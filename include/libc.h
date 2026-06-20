@@ -244,6 +244,8 @@ int memcmp(const void *dest, const void *src, unsigned int count);
 
 void *malloc(size_t size);
 
+void *realloc(void *ptr, size_t new_size);
+
 void free(void *ptr);
 
 

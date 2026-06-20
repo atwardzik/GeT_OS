@@ -61,10 +61,14 @@ MODBUS_SRCS := $(SRCDIR)/modbustcp.c
 MODBUS_OBJS := $(MODBUS_SRCS:$(SRCDIR)/%.c=$(OBJDIR)/%.o)
 MODBUS := $(BINDIR)/modbgen
 
+SERVER_SRCS := $(SRCDIR)/server.c
+SERVER_OBJS := $(SERVER_SRCS:$(SRCDIR)/%.c=$(OBJDIR)/%.o)
+SERVER := $(BINDIR)/server
+
 CRT0 := $(OBJDIR)/crt0.o
 
 ### Executables' rules
-all: liblibc.so $(CRT0) dirs $(GSH) $(MKDIR) $(TOUCH) $(CAT) $(LS) $(MODBUS)
+all: liblibc.so $(CRT0) dirs $(GSH) $(MKDIR) $(TOUCH) $(CAT) $(LS) $(MODBUS) $(SERVER)
 
 
 # Link
@@ -85,6 +89,9 @@ $(CAT): $(CAT_OBJS) $(CRT0) liblibc.so | dirs
 
 $(MODBUS): $(MODBUS_OBJS) $(CRT0) liblibc.so | dirs
 	$(LINKER) $(LINK_ARGS) $(MODBUS_OBJS) $(CRT0) -llibc -o $@
+
+$(SERVER): $(SERVER_OBJS) $(CRT0) liblibc.so | dirs
+	$(LINKER) $(LINK_ARGS) $(SERVER_OBJS) $(CRT0) -llibc -o $@
 
 
 # Generate object files from C and assembly sources
