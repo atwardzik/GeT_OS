@@ -288,7 +288,7 @@ open:
 static int bind_socket(struct Socket *sock, const uint16_t port) {
         struct WIZnetSocket *socket = (struct WIZnetSocket *) sock;
 
-        const uint8_t portr[] = {port >> 8, port & 0xff};
+        const uint8_t portr[] = {((char *) &port)[0], ((char *) &port)[1]};
         eth_write_mem(SN_PORTR(socket->index), portr, 2);
 
         socket->socket.port = port;
