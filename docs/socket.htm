@@ -1,0 +1,84 @@
+<html lang="en">
+
+<head>
+        <title>System Calls Manual - socket</title>
+</head>
+
+<body>
+        <h3>NAME</h3>
+        <code>socket</code> - create an endpoint for communication
+
+        <h3>SYNOPSIS</h3>
+        <pre>
+#include &lt;socket.h&gt;
+
+int socket(int <var>domain</var>, int <var>type</var>, int <var>protocol</var>);
+</pre>
+
+        <h3>DESCRIPTION</h3>
+        <code>socket()</code> creates an endpoint for communication and returns
+        a descriptor.
+
+        <h4>PARAMETERS</h4>
+        <ul>
+                <li>
+                        <var>domain</var> - currently only <code>AF_INET</code> corresponding to ipv4 protocol
+                </li>
+                <li>
+                        <var>type</var> - one of the following communication types:
+                        <ul>
+                                <li><code>SOCK_STREAM</code> - for TCP communication</li>
+                                <li><code>SOCK_RAW</code> - for RAW communication</li>
+                        </ul>
+                </li>
+                <li>
+                        <var>protocol</var> - ignored
+                </li>
+        </ul>
+
+
+        <h3>RETURN VALUES</h3>
+        A negative error code is returned if an error occurs, otherwise the return
+        value is a descriptor referencing the socket.
+
+
+        <h3>ERRORS</h3>
+        <ul>
+                <li><code>[EAFNOSUPPORT]</code> - The specified address family is not supported</li>
+                <li><code>[ENFILE]</code> - The system file table is full</li>
+                <li><code>[EPROTONOSUPPORT]</code> - The protocol is not supported</li>
+                <li><code>[ENOSOCKFREE]</code> - There are no free hardware sockets</li>
+        </ul>
+
+
+        <h3>CODE EXAMPLES</h3>
+        <pre>
+int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+if (sockfd < 0) {
+        dprintf(2, "Error while trying to open socket\n");
+}
+</pre>
+
+        For full socket-based connections establishment please refer to <a href="internet.htm">the internet</a>.
+
+
+        <h3>SEE ALSO</h3>
+        <a href="accept.htm"><code>accept</code></a>,
+        <a href="bind.htm"><code>bind</code></a>,
+        <a href="listen.htm"><code>listen</code></a>,
+        <a href="connect.htm"><code>connect</code></a>,
+        <a href="read.htm"><code>read</code></a>,
+        <a href="write.htm"><code>write</code></a>
+
+
+        <h3>AUTHORS</h3>
+        Artur Twardzik
+
+        <br /><br />
+
+        <pre>
+GeT OS v0.1.1                                                     June 30, 2026
+</pre>
+</body>
+
+</html>

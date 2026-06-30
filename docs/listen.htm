@@ -1,0 +1,78 @@
+<html lang="en">
+
+<head>
+        <title>System Calls Manual - listen</title>
+</head>
+
+<body>
+        <h3>NAME</h3>
+        <code>listen</code> - listen for connections on a socket
+
+        <h3>SYNOPSIS</h3>
+        <pre>
+#include &lt;socket.h&gt;
+
+int listen(int <var>sockfd</var>, int <var>backlog</var>);
+</pre>
+
+        <h3>DESCRIPTION</h3>
+        <code>listen()</code> - express a willingness to listen for incoming connection after successful TCP
+        (<code>SOCK_STREAM</code>) socket creation with <code>socket()</code>
+        and port assignment with <code>bind()</code>.
+
+        <h4>PARAMETERS</h4>
+        <ul>
+                <li>
+                        <var>sockfd</var> - descriptor of a socket
+                </li>
+                <li>
+                        <var>backlog</var> - ignored
+                </li>
+        </ul>
+
+
+        <h3>RETURN VALUES</h3>
+        Upon successful completion, a value of 0 is returned. Otherwise, negative error code is returned.
+
+
+        <h3>ERRORS</h3>
+        <ul>
+                <li><code>[EBADF]</code> - <var>sockfd</var> is not a valid file descriptor</li>
+        </ul>
+
+
+        <h3>CODE EXAMPLES</h3>
+        <pre>
+struct sockaddr_in source = { ... };
+
+if (bind(sockfd, (struct sockaddr *) &source, sizeof(source)) < 0) { ... }
+
+if (listen(sockfd, 0) < 0) {
+        dprintf(2, "Error while trying to listen on port: %i\n",
+                ntohs(source.sin_port));
+}
+</pre>
+
+        For full socket-based connections establishment please refer to <a href="internet.htm">the internet</a>.
+
+
+        <h3>SEE ALSO</h3>
+        <a href="socket.htm"><code>socket</code></a>,
+        <a href="accept.htm"><code>accept</code></a>,
+        <a href="bind.htm"><code>bind</code></a>,
+        <a href="connect.htm"><code>connect</code></a>,
+        <a href="read.htm"><code>read</code></a>,
+        <a href="write.htm"><code>write</code></a>
+
+
+        <h3>AUTHORS</h3>
+        Artur Twardzik
+
+        <br /><br />
+
+        <pre>
+GeT OS v0.1.1                                                     June 30, 2026
+</pre>
+</body>
+
+</html>
