@@ -11,6 +11,7 @@ add_library(drivers OBJECT
         keyboard.S
         vga.c
         vga.S
+        monitor_text_mode.c
         spi.S
         ethernet.c
         sd_card.c

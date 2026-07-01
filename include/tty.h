@@ -28,19 +28,12 @@ constexpr uint32_t ARROW_RIGHT = 0x1b5b43;
 
 void init_tty(void);
 
-void write_byte(int c);
-
 int setup_tty_chrfile(struct VFS_Inode *mount_point);
 
 void write_to_keyboard_buffer(int c);
 
-void *get_current_keyboard_buffer_offset(void);
-
-int get_written_characters_count(void);
-
 
 int printk(const char *ptr);
-
 
 void printk_status_init(const char *msg);
 
