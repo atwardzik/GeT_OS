@@ -22,6 +22,10 @@ static constexpr int DEFAULT_PROCESS_STACK_SIZE = 2 * 1024;
 
 static constexpr off_t DEFAULT_PROCESS_SP_OFFSET = 1 * 1024;
 
+static constexpr int IDLE_PROCESS_STACK_SIZE = 256;
+
+static constexpr off_t IDLE_PROCESS_SP_OFFSET = 128;
+
 #define RECALL_STATE_FROM(sp)                           \
         __asm__(                                        \
                 "mrs    r0," STR(sp) "\n\r"             \
@@ -108,15 +112,13 @@ constexpr pid_t PID_INIT = 1;
 static void idle(void) { while (1); }
 
 static int create_idle_process() {
-        const int idle_process_size = 64;
-
-        void *process_page = kmalloc(idle_process_size);
+        void *process_page = kmalloc(IDLE_PROCESS_STACK_SIZE);
         if (!process_page) {
                 return -ENOMEM;
         }
 
-        void *kstack = process_page + idle_process_size - sizeof(size_t);
-        void *pstack = process_page + (idle_process_size / 2) - sizeof(size_t);
+        void *kstack = process_page + IDLE_PROCESS_STACK_SIZE - sizeof(size_t);
+        void *pstack = process_page + IDLE_PROCESS_SP_OFFSET - sizeof(size_t);
         create_process_stack_frame(&pstack,
                                    &exit,
                                    &idle,
@@ -132,7 +134,7 @@ static int create_idle_process() {
                 .stack_page_ptr = process_page,
                 .pstack = pstack,
                 .kstack = kstack,
-                .allocated_memory = idle_process_size,
+                .allocated_memory = IDLE_PROCESS_STACK_SIZE,
 
                 .parent = nullptr,
                 .max_children_count = 0,
@@ -146,6 +148,8 @@ static int create_idle_process() {
         init_default_sighandlers(&process);
 
         scheduler.process_idle = process;
+
+        return PID_IDLE;
 }
 
 int scheduler_init(void *current_main_kernel_stack) {
@@ -266,17 +270,20 @@ __attribute__((optimize("omit-frame-pointer"))) void context_switch(void) {
                 goto switch_to_kernelspace;
         }
 
+        off_t msplim_offset = 0;
 switch_to_userspace:
         process->pstate = RUNNING;
+        msplim_offset = (process->pid == PID_IDLE ? IDLE_PROCESS_SP_OFFSET : DEFAULT_PROCESS_SP_OFFSET) + 8;
         __asm__("msr    psplim, %0\n\r" : : "r"(process->stack_page_ptr));
-        __asm__("msr    msplim, %0\n\r" : : "r"(process->stack_page_ptr + DEFAULT_PROCESS_SP_OFFSET + 8));
+        __asm__("msr    msplim, %0\n\r" : : "r"(process->stack_page_ptr + msplim_offset));
         __asm__("msr    psp, %0\n\r" : : "r"(process->pstack));
         __asm__("msr    msp, %0\n\r" : : "r"(process->kstack));
         RECALL_USERSPACE_STATE
 
 switch_to_kernelspace:
+        msplim_offset = (process->pid == PID_IDLE ? IDLE_PROCESS_SP_OFFSET : DEFAULT_PROCESS_SP_OFFSET) + 8;
         __asm__("msr    psplim, %0\n\r" : : "r"(process->stack_page_ptr));
-        __asm__("msr    msplim, %0\n\r" : : "r"(process->stack_page_ptr + DEFAULT_PROCESS_SP_OFFSET + 8));
+        __asm__("msr    msplim, %0\n\r" : : "r"(process->stack_page_ptr + msplim_offset));
         __asm__("msr    psp, %0\n\r" : : "r"(process->pstack));
         __asm__("msr    msp, %0\n\r" : : "r"(process->kstack));
         RECALL_KERNELSPACE_STATE
@@ -489,10 +496,12 @@ static struct Files setup_init_stdio(struct VFS_Inode *root) {
         struct FileOperations *stdin_fop = kmalloc(sizeof(*stdin_fop));
         *stdin_fop = empty_fop;
         stdin_fop->read = tty_result->inode->i_fop->read;
+        stdin_fop->ioctl = tty_result->inode->i_fop->ioctl;
 
         struct FileOperations *stdout_fop = kmalloc(sizeof(*stdin_fop));
         *stdout_fop = empty_fop;
         stdout_fop->write = tty_result->inode->i_fop->write;
+        stdout_fop->ioctl = tty_result->inode->i_fop->ioctl;
 
         struct File *f_stdin = kmalloc(sizeof(*f_stdin));
         f_stdin->f_pos = 0;

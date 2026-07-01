@@ -36,7 +36,7 @@ void write_to_keyboard_buffer(int c);
 
 void *get_current_keyboard_buffer_offset(void);
 
-int newline_buffered_at(void);
+int get_written_characters_count(void);
 
 
 int printk(const char *ptr);

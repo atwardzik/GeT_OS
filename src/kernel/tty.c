@@ -340,7 +340,10 @@ static struct {
 static int keyboard_buffer_final_length = 0;
 static int keyboard_buffer_current_position = 0;
 
-static bool signal_buffer_newline = false;
+static bool tty_echo_on = true;
+static bool tty_canonical_mode = true;
+static bool character_present = false;
+static bool newline_present = false;
 
 void *get_current_keyboard_buffer_offset() {
         return keyboard_device_file_stream->buffer + keyboard_buffer_final_length;
@@ -371,6 +374,53 @@ static void delete_and_shift(const int pos_delete, const int len) {
         }
 }
 
+static void tty_echo(int c) {
+        if (!tty_echo_on) {
+                return;
+        }
+
+        write_byte(c);
+}
+
+void handle_special_character(int c) {
+        if (c == ETX) {
+                tty_echo('^');
+                tty_echo('C');
+
+                struct Process *process = nullptr;
+                if (keyboard_device_file_stream->read_wait) {
+                        process = pop_from_wait_queue(&keyboard_device_file_stream->read_wait);
+                }
+                else {
+                        process = scheduler_get_current_process();
+                }
+                if (process) {
+                        signal_notify(process, SIGINT);
+                }
+        }
+        else if (c == BACKSPACE) {
+                if (keyboard_buffer_current_position) {
+                        keyboard_buffer_final_length -= 1;
+                        keyboard_buffer_current_position -= 1;
+                        delete_and_shift(keyboard_buffer_current_position, keyboard_buffer_final_length);
+
+                        tty_echo(c);
+                }
+        }
+        else if (c == ARROW_LEFT) {
+                if (keyboard_buffer_current_position) {
+                        keyboard_buffer_current_position -= 1;
+                        tty_echo(c);
+                }
+        }
+        else if (c == ARROW_RIGHT) {
+                if (keyboard_buffer_current_position < keyboard_buffer_final_length) {
+                        keyboard_buffer_current_position += 1;
+                        tty_echo(c);
+                }
+        }
+}
+
 void write_to_keyboard_buffer(int c) {
         static char escape_sequence[4] = {};
         static size_t escape_sequence_position = 0;
@@ -389,111 +439,93 @@ void write_to_keyboard_buffer(int c) {
                 }
         }
 
+        if (c == ETX || c == BACKSPACE || c == ARROW_LEFT || c == ARROW_RIGHT) {
+                handle_special_character(c);
+                goto wake_up_if_applicable;
+        }
+
         // TODO: it would be wise to resize buffer if the contents do not fit
-        if (c == ETX) {
-                write_string("^C");
 
-                struct Process *process = nullptr;
-                if (keyboard_device_file_stream->read_wait) {
-                        process = pop_from_wait_queue(&keyboard_device_file_stream->read_wait);
-                }
-                else {
-                        process = scheduler_get_current_process();
-                }
-                if (process) {
-                        signal_notify(process, SIGINT);
-                }
+        keyboard_buffer_final_length += 1;
+        keyboard_buffer_current_position += 1;
+        if (c == ENDL) {
+                *(keyboard_device_file_stream->buffer + keyboard_buffer_final_length - 1) = ENDL;
 
-                return;
-        }
-
-        if (c == BACKSPACE) {
-                if (keyboard_buffer_current_position) {
-                        keyboard_buffer_final_length -= 1;
-                        keyboard_buffer_current_position -= 1;
-                        delete_and_shift(keyboard_buffer_current_position, keyboard_buffer_final_length);
-
-                        write_byte(c);
-                }
-        }
-        else if (c == ARROW_LEFT) {
-                if (keyboard_buffer_current_position) {
-                        keyboard_buffer_current_position -= 1;
-                        write_byte(c);
-                }
-        }
-        else if (c == ARROW_RIGHT) {
-                if (keyboard_buffer_current_position < keyboard_buffer_final_length) {
+                while (keyboard_buffer_current_position < keyboard_buffer_final_length) {
                         keyboard_buffer_current_position += 1;
-                        write_byte(c);
+                        tty_echo(ARROW_RIGHT);
                 }
+                tty_echo(ENDL);
+
+                newline_present = true;
+                goto wake_up_if_applicable;
         }
-        else {
-                keyboard_buffer_final_length += 1;
-                keyboard_buffer_current_position += 1;
-                if (c == ENDL) { //newline buffering
-                        *(keyboard_device_file_stream->buffer + keyboard_buffer_final_length - 1) = ENDL;
 
-                        while (keyboard_buffer_current_position < keyboard_buffer_final_length) {
-                                keyboard_buffer_current_position += 1;
-                                write_byte(ARROW_RIGHT);
-                        }
-                        write_byte(ENDL);
+        if (keyboard_buffer_current_position < keyboard_buffer_final_length) {
+                insert_and_shift(c, keyboard_buffer_current_position - 1, keyboard_buffer_final_length);
 
-                        signal_buffer_newline = true;
-                        wake_up_interruptible(&keyboard_device_file_stream->read_wait);
-                        return;
-                }
-
-                if (keyboard_buffer_current_position < keyboard_buffer_final_length) {
-                        insert_and_shift(c, keyboard_buffer_current_position - 1, keyboard_buffer_final_length);
-
+                if (tty_echo_on) {
                         insert_byte(c);
-                        return;
                 }
-                else {
-                        *(keyboard_device_file_stream->buffer + keyboard_buffer_current_position - 1) = (char) c;
-                }
-                write_byte(c);
+
+                goto wake_up_if_applicable;
+        }
+
+        *(keyboard_device_file_stream->buffer + keyboard_buffer_current_position - 1) = (char) c;
+        tty_echo(c);
+
+
+wake_up_if_applicable:
+        character_present = true;
+        if (!tty_canonical_mode || (tty_canonical_mode && newline_present)) {
+                wake_up_interruptible(&keyboard_device_file_stream->read_wait);
         }
 }
 
-int newline_buffered_at() { //TODO: rename
-        if (signal_buffer_newline) {
+int get_written_characters_count(void) {
+        if (newline_present) {
                 const auto temp = keyboard_buffer_final_length;
-
-                signal_buffer_newline = false;
-                keyboard_buffer_final_length = 0;
-                keyboard_buffer_current_position = 0;
 
                 return temp;
         }
 
-        return false;
+        return character_present ? 1 : 0;
+}
+
+static void reset_keyboard_buffer(void) {
+        newline_present = false;
+        character_present = false;
+        keyboard_buffer_final_length = 0;
+        keyboard_buffer_current_position = 0;
 }
 
 static bool tty_is_ready() {
-        return signal_buffer_newline;
+        if (tty_canonical_mode) {
+                return newline_present;
+        }
+
+        return character_present;
 }
 
 static ssize_t tty_read(struct File *, void *buf, const size_t count, off_t file_offset) {
         wait_event_interruptible(&keyboard_device_file_stream->read_wait, tty_is_ready);
 
-        char *ptr = (char *) buf;
-        const int stream_size = newline_buffered_at();
-        const void *stream_start = keyboard_device_file_stream->buffer;
+        const int stream_size = get_written_characters_count();
+        const char *stream = keyboard_device_file_stream->buffer;
         if (stream_size == 0) {
                 // errno = EINTR;
                 return -1;
         }
 
         int offset = 0;
+        char *ptr = (char *) buf;
         while (offset < count && offset < stream_size) {
-                *(ptr + offset) = *(char *) (stream_start + offset);
+                ptr[offset] = stream[offset];
 
                 offset += 1;
         }
 
+        reset_keyboard_buffer();
         return offset;
 }
 
@@ -507,6 +539,23 @@ static ssize_t tty_write(struct File *, void *buf, const size_t count, off_t fil
         return count;
 }
 
+int tty_ioctl(struct File *file, const uint64_t request, void *arg) {
+        switch (request) {
+                case TTY_ECHO:
+                        tty_echo_on = *(bool *) arg;
+                        break;
+                case TTY_CANONICAL:
+                        tty_canonical_mode = *(bool *) arg;
+                        break;
+                case TTY_CLEAR_SCREEN:
+                        break;
+                default:
+                        return -1;
+        }
+
+        return 0;
+}
+
 int setup_tty_chrfile(struct VFS_Inode *mount_point) {
         if (!mount_point) {
                 return -ENOENT;
@@ -516,18 +565,25 @@ int setup_tty_chrfile(struct VFS_Inode *mount_point) {
         if (!stdio_op) {
                 return -ENOMEM;
         }
+        memset(stdio_op, 0, sizeof(*stdio_op));
 
         stdio_op->read = tty_read;
         stdio_op->write = tty_write;
+        stdio_op->ioctl = tty_ioctl;
         kfree(mount_point->i_fop);
         mount_point->i_fop = stdio_op;
 
-        constexpr size_t buf_size = 1024;
+        constexpr size_t buf_size = 512;
 
         keyboard_device_file_stream = kmalloc(
                 sizeof(*keyboard_device_file_stream)
                 + (buf_size - 1) * sizeof(char)
         );
+
+        // struct RAMFS_Inode *inode = (struct RAMFS_Inode *) mount_point;
+        // if (inode->file_begin == nullptr) {
+        //         //todo: write per-tty configuration replacing static variables from this file
+        // }
 
         keyboard_device_file_stream->length = buf_size;
         keyboard_device_file_stream->read_wait = nullptr;

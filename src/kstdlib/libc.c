@@ -101,6 +101,14 @@ int close(int file) {
         return ret;
 }
 
+int ioctl(int file, unsigned long request, void *arg) {
+        int ret;
+        SYSCALL(IOCTL_SVC)
+        __asm__("mov    %0, r0\n\r" : "=r"(ret));
+
+        return ret;
+}
+
 
 int fstat(int file, struct stat *st) {
         int ret;
