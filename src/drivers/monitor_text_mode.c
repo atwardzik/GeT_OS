@@ -3,10 +3,10 @@
 //
 #include "monitor_text_mode.h"
 
-#include "config.h"
-#include "tty.h"
-#include "drivers/uart.h"
 #include "drivers/vga.h"
+
+#include "ascii_char_codes.h"
+#include "config.h"
 
 extern uint8_t __screen_buffer_start__[];
 extern uint8_t __screen_buffer_length__[];
@@ -14,30 +14,6 @@ extern uint8_t __screen_buffer_length__[];
 uint8_t *const screen_buffer_ptr = __screen_buffer_start__;
 const uint8_t *const screen_length_ptr = __screen_buffer_length__;
 
-
-void raw_put_letter(
-        const char letter, const unsigned int row_letter_position,
-        const unsigned int column_letter_position,
-        const ByteColorCode color_code
-) {
-        if (kconf->io_dev.uart.enabled) {
-                if (letter != ENDL) {
-                        uart_set_cursor(row_letter_position, column_letter_position);
-                        uart_change_color(color_code);
-                }
-
-                if (isprint(letter)) {
-                        uart_putc(letter);
-                }
-                else {
-                        uart_putc(EMPTY_SPACE);
-                }
-        }
-
-        if (kconf->io_dev.vga_display.enabled) {
-                vga_put_byte_encoded_color_letter(letter, row_letter_position, column_letter_position, color_code);
-        }
-}
 
 struct SingleChar {
         uint8_t ascii_code;
@@ -48,7 +24,6 @@ struct CharBuffer {
         struct SingleChar chars[BUFFER_HEIGHT][BUFFER_WIDTH];
 };
 
-//TODO: tty should be dynamic kernel "process", so that we can open multiple files
 static struct {
         size_t current_row_position;
         size_t current_column_position;
@@ -87,13 +62,6 @@ static void save_char_to_buffer(const char c) {
 }
 
 static void scroll_vertical() {
-        if (!kconf->io_dev.uart.enabled) {
-                uart_puts("\x1b[S");
-        }
-        if (!kconf->io_dev.vga_display.enabled) {
-                return;
-        }
-
         vga_clr_all();
 
         for (size_t i = 1; i < BUFFER_HEIGHT; ++i) {
@@ -136,7 +104,8 @@ static void scroll_horizontal_right(unsigned int row_position, unsigned int colu
                 current_char = next_char;
                 next_char = ScreenWriter.buffer->chars[row_position][column_position];
                 ScreenWriter.buffer->chars[row_position][column_position] = current_char;
-                raw_put_letter(current_char.ascii_code, row_position, column_position, current_char.color_code);
+                vga_put_byte_encoded_color_letter(current_char.ascii_code, row_position, column_position,
+                                                  current_char.color_code);
 
                 if (next_char.ascii_code == 0) {
                         break;
@@ -175,15 +144,7 @@ static void scroll_horizontal_left(const unsigned int row_position, const unsign
 
                         ScreenWriter.buffer->chars[i][j - 1] = current_char;
 
-                        raw_put_letter(current_char.ascii_code, i, j - 1, current_char.color_code);
-                        uart_set_cursor(i, j - 1);
-
-                        if (current_char.ascii_code == 0) {
-                                if (kconf->io_dev.uart.enabled) {
-                                        uart_set_cursor(row_position, column_position);
-                                }
-                                return;
-                        }
+                        vga_put_byte_encoded_color_letter(current_char.ascii_code, i, j - 1, current_char.color_code);
                 }
         }
 }
@@ -198,18 +159,18 @@ static void write_new_line() {
                 ScreenWriter.current_row_position += 1;
         }
 
-        raw_put_letter(ENDL, ScreenWriter.current_row_position,
-                       ScreenWriter.current_column_position,
-                       ScreenWriter.current_color_code);
+        vga_put_byte_encoded_color_letter(ENDL, ScreenWriter.current_row_position,
+                                          ScreenWriter.current_column_position,
+                                          ScreenWriter.current_color_code);
         ScreenWriter.current_column_position = 0;
 }
 
 static void write_with_line_overflow_if_needed(const char c) {
         save_char_to_buffer(c);
 
-        raw_put_letter(c, ScreenWriter.current_row_position,
-                       ScreenWriter.current_column_position,
-                       ScreenWriter.current_color_code);
+        vga_put_byte_encoded_color_letter(c, ScreenWriter.current_row_position,
+                                          ScreenWriter.current_column_position,
+                                          ScreenWriter.current_color_code);
 
         ScreenWriter.current_column_position += 1;
         if (ScreenWriter.current_column_position == BUFFER_WIDTH) {
@@ -218,7 +179,7 @@ static void write_with_line_overflow_if_needed(const char c) {
 }
 
 
-void write_byte(const int c) {
+void monitor_tm_write_byte(const int c) {
         static uint8_t escape_sequence[10] = {};
         static size_t escape_sequence_position = 0;
 
@@ -244,9 +205,7 @@ void write_byte(const int c) {
                 return;
         }
 
-        if (kconf->io_dev.vga_display.enabled) {
-                vga_clr_cursor();
-        }
+        vga_clr_cursor();
 
         if (c == ENDL) {
                 write_new_line();
@@ -263,32 +222,22 @@ void write_byte(const int c) {
         }
         else if (c == ARROW_LEFT) {
                 move_buffer_position_left();
-
-                if (kconf->io_dev.uart.enabled) {
-                        uart_putc(c);
-                }
         }
         else if (c == ARROW_RIGHT) {
                 move_buffer_position_right();
-
-                if (kconf->io_dev.uart.enabled) {
-                        uart_putc(c);
-                }
         }
         else {
                 write_with_line_overflow_if_needed(c);
         }
 
-        if (kconf->io_dev.vga_display.enabled) {
-                vga_update_cursor_position(ScreenWriter.current_row_position, ScreenWriter.current_column_position);
-        }
+        vga_update_cursor_position(ScreenWriter.current_row_position, ScreenWriter.current_column_position);
 }
 
-void insert_byte(const int c) {
+void monitor_tm_insert_byte(const int c) {
         const auto row = ScreenWriter.current_row_position;
         const auto column = ScreenWriter.current_column_position;
 
         scroll_horizontal_right(row, column);
 
-        write_byte(c);
+        monitor_tm_write_byte(c);
 }

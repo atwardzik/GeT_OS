@@ -9,6 +9,9 @@
 #include "libc.h"
 #include "types.h"
 
+constexpr uint32_t UART_DCH = 0x1b5b50; // ESC[P
+constexpr uint32_t UART_ICH = 0x1b5b40; // ESC[@
+
 void uart_init(void);
 
 void uart_putc(int c);

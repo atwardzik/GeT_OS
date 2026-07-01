@@ -7,14 +7,15 @@
 #include "drivers/keyboard.h"
 #include "drivers/monitor_text_mode.h"
 #include "drivers/uart.h"
+#include "drivers/vga.h"
 
 #include "kernel/memory.h"
 #include "kernel/resources.h"
 
+#include "ascii_char_codes.h"
 #include "config.h"
 #include "errno.h"
 #include "signal.h"
-#include "drivers/vga.h"
 
 
 //TODO: probably UART should be separated from screen terminal!
@@ -37,6 +38,32 @@ void init_tty() {
         }
 }
 
+static void write_byte(int c) {
+        if (kconf->io_dev.vga_display.enabled) {
+                monitor_tm_write_byte(c);
+        }
+
+        if (kconf->io_dev.uart.enabled) {
+                if (c == BACKSPACE) {
+                        uart_putc(ARROW_LEFT);
+                        uart_putc(UART_DCH);
+                }
+                else {
+                        uart_putc(c);
+                }
+        }
+}
+
+static void insert_byte(int c) {
+        if (kconf->io_dev.vga_display.enabled) {
+                monitor_tm_insert_byte(c);
+        }
+
+        if (kconf->io_dev.uart.enabled) {
+                uart_putc(UART_ICH);
+                uart_putc(c);
+        }
+}
 
 //TODO: remove and integrate with struct CharBuffer
 static struct {
@@ -124,6 +151,11 @@ static void handle_special_character(int c) {
                         tty_echo(c);
                 }
         }
+        else if (c == ARROW_UP || c == ARROW_DOWN) {
+                if (!tty_canonical_mode) {
+                        tty_echo(c);
+                }
+        }
 }
 
 void write_to_keyboard_buffer(int c) {
@@ -144,7 +176,7 @@ void write_to_keyboard_buffer(int c) {
                 }
         }
 
-        if (c == ETX || c == BACKSPACE || c == ARROW_LEFT || c == ARROW_RIGHT) {
+        if (c == ETX || c == BACKSPACE || c == ARROW_LEFT || c == ARROW_RIGHT || c == ARROW_UP || c == ARROW_DOWN) {
                 handle_special_character(c);
                 goto wake_up_if_applicable;
         }

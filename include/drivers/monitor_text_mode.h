@@ -5,8 +5,8 @@
 #ifndef OS_MONITOR_TEXT_MODE_H
 #define OS_MONITOR_TEXT_MODE_H
 
-void write_byte(const int c);
+void monitor_tm_write_byte(int c);
 
-void insert_byte(const int c);
+void monitor_tm_insert_byte(int c);
 
 #endif //OS_MONITOR_TEXT_MODE_H
