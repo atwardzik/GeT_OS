@@ -63,7 +63,8 @@
 #define EISCONN 127		/* Socket is already connected */
 #define ENOTCONN 128		/* Socket is not connected */
 #define ENOSOCKFREE 129         /* No sockets are free */
+#define EAFNOSUPPORT 130        /* Address family not supported */
 
-#define MAX_ERRNO 128
+#define MAX_ERRNO 131
 
 #endif //OS_ERRNO_H

@@ -150,14 +150,12 @@ int init_network(void) {
 
 int sys_socket(int domain, int type, int protocol) {
         if (domain != AF_INET) {
-                UNIMPLEMENTED("Protocol family unknown. Currently only ipv4 (AF_INET) is supported.");
+                return -EAFNOSUPPORT;
         }
 
         struct Process *current_process = scheduler_get_current_process();
         if (current_process->files.count >= MAX_OPEN_FILE_DESCRIPTORS) {
-                sys_write(2, "[!] Too much files opened.\n", 28);
-                __asm__("bkpt   #0");
-                return -1;
+                return -EMFILE;
         }
 
         // TODO: make it dependent on network interfaces connected
@@ -179,7 +177,7 @@ int sys_socket(int domain, int type, int protocol) {
                         res = socket->s_op->open(socket, MACRAW);
                         break;
                 default:
-                        UNIMPLEMENTED("Unknown type. Currently only TCP and RAW supported.");
+                        return -EPROTONOSUPPORT;
         }
 
         if (res < 0) {
@@ -195,30 +193,26 @@ int sys_socket(int domain, int type, int protocol) {
                 }
         }
 
-        return -ENOSOCKFREE; //should not happen?
+        return -ENOSOCKFREE;
 }
 
 int sys_bind(int sockfd, const struct sockaddr *addr, size_t addrlen) {
         const struct Process *current_process = scheduler_get_current_process();
         if (sockfd >= current_process->files.count || sockfd < 0 || current_process->files.fdtable[sockfd] == nullptr) {
-                sys_write(1, "[!] There is no such socket descriptor\n", 39);
-                __asm__("bkpt   #0");
-                return -1;
+                return -EBADF;
         }
 
         struct File *socket_file = current_process->files.fdtable[sockfd];
         struct Socket *socket = (struct Socket *) socket_file;
 
-        const uint16_t port = (addr->sa_data[1] << 8) | (addr->sa_data[0]); // FIXME: endianess dependent
-        return socket->s_op->bind(socket, port);
+        // const uint16_t port = (addr->sa_data[1] << 8) | (addr->sa_data[0]); // FIXME: endianess dependent
+        return socket->s_op->bind(socket, *(uint16_t *) &addr->sa_data);
 }
 
 int sys_listen(int sockfd, [[maybe_unused]] int backlog) {
         const struct Process *current_process = scheduler_get_current_process();
         if (sockfd >= current_process->files.count || sockfd < 0 || current_process->files.fdtable[sockfd] == nullptr) {
-                sys_write(1, "[!] There is no such socket descriptor\n", 39);
-                __asm__("bkpt   #0");
-                return -1;
+                return -EBADF;
         }
 
         struct File *socket_file = current_process->files.fdtable[sockfd];
@@ -230,15 +224,14 @@ int sys_listen(int sockfd, [[maybe_unused]] int backlog) {
 int sys_accept(int sockfd, struct sockaddr *addr, size_t addrlen) {
         const struct Process *current_process = scheduler_get_current_process();
         if (sockfd >= current_process->files.count || sockfd < 0 || current_process->files.fdtable[sockfd] == nullptr) {
-                sys_write(1, "[!] There is no such socket descriptor\n", 39);
-                __asm__("bkpt   #0");
-                return -1;
+                return -EBADF;
         }
 
         struct File *socket_file = current_process->files.fdtable[sockfd];
         struct Socket *socket = (struct Socket *) socket_file;
 
-        return socket->s_op->accept(socket, addr, addrlen);
+        int res = socket->s_op->accept(socket, addr, addrlen);
+        return res < 0 ? res : sockfd; // for POSIX compliancy, return socket number (even though it is the same socket)
 }
 
 int sys_connect(int sockfd, const struct sockaddr *addr, size_t addrlen) {
