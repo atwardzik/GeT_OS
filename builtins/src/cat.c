@@ -54,26 +54,26 @@ int main(int argc, char *argv[]) {
                 return -1;
         }
 
-        // unsigned long file_len = lseek(fd, 0, SEEK_END);
-        // lseek(fd, 0, SEEK_SET);
+        const unsigned long file_len = lseek(fd, 0, SEEK_END);
+        lseek(fd, 0, SEEK_SET);
+        char *buffer = malloc(file_len);
+        read(fd, buffer, file_len);
 
-        int bytes_read = 0;
+        unsigned long bytes_read = 0;
         int i = 1;
         if (LINE_NUMBERING) {
                 puts("    1  ");
                 i += 1;
         }
         do {
-                char buf[2] = {};
-                bytes_read = read(fd, buf, 1);
-
-
+                const char *buf = &buffer[bytes_read];
+                bytes_read += 1;
                 if (buf[0] == '\n' && NEWLINE_CHARS_PRINTING) {
                         write(1, "$", 1);
                 }
 
                 if (bytes_read && RAW_BYTES) {
-                        unsigned char value = (unsigned char) strtoul(buf, nullptr, 10);
+                        const unsigned char value = (unsigned char) strtoul(buf, nullptr, 10);
 
                         char str[20] = {};
                         itoa(value, str, 10);
@@ -95,7 +95,7 @@ int main(int argc, char *argv[]) {
                         printf("%i  ", i);
                         i += 1;
                 }
-        } while (bytes_read);
+        } while (bytes_read < file_len);
 
         if (NEWLINE_CHARS_PRINTING) {
                 puts("%");

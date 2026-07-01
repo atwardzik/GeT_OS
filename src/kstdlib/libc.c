@@ -621,6 +621,7 @@ int vsnprintf(char *str, size_t size, const char *format, va_list vlist) {
         const char *ptr_begin = format;
         const char *ptr_end = format;
         size_t index = 0;
+        size_t total_str_len = 0;
         while (*ptr_end && ptr_end < format_end) {
                 ptr_end += strcspn(ptr_begin, "%");
 
@@ -630,6 +631,7 @@ int vsnprintf(char *str, size_t size, const char *format, va_list vlist) {
                 memcpy(str + index, ptr_begin, to_copy);
                 index += to_copy;
                 available -= len;
+                total_str_len += len;
 
                 if (ptr_end == format_end) {
                         break;
@@ -682,12 +684,13 @@ int vsnprintf(char *str, size_t size, const char *format, va_list vlist) {
                 }
                 ptr_end += 1;
                 index += to_copy;
+                total_str_len += len;
 
 
                 ptr_begin = ptr_end;
         }
 
-        return index;
+        return total_str_len;
 }
 
 int snprintf(char *str, size_t size, const char *format, ...) {

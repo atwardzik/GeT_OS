@@ -7,7 +7,7 @@
 
 static const char *http_header = "HTTP/1.1 200 OK\r\n"
         "Content-Type: text/html\r\n"
-        "Content-Length: %u\r\n"
+        "Content-Length: %i\r\n"
         "Connection: close\r\n\r\n";
 
 const char *server_tokens[] = {"${{TIME}}", "${{TEST}}"};
@@ -90,7 +90,7 @@ static void *manage_connection(void *arg) {
 
         printf("Connection accepted\n");
 
-        char *website = read_html("/mnt/disk0/INDEX.HTM");
+        char *website = read_html("/mnt/disk0/index.htm");
         if (!website) {
                 ret = -ENOENT;
                 goto conn_close;
@@ -98,16 +98,16 @@ static void *manage_connection(void *arg) {
         replace_server_tokens(&website);
         const int html_length = strlen(website);
 
-        const int http_response_length =
-                strlen(http_header) - 2 + snprintf(nullptr, 0, "%u", html_length) + strlen(website) + 1;
+        const int header_len = strlen(http_header) - 2 + snprintf(nullptr, 0, "%i", html_length); // -2 for %i
+        const int http_response_length = header_len + strlen(website) + 1;
 
-        char *http_response = malloc(http_response_length);
+        char *http_response = realloc(website, http_response_length);
         if (!http_response) {
                 ret = -ENOMEM;
                 goto conn_close;
         }
+        memmove(http_response + header_len, website, html_length);
         snprintf(http_response, http_response_length, http_header, strlen(website));
-        strcat(http_response, website);
 
         write(sockfd, http_response, strlen(http_response));
         free(http_response);
@@ -119,14 +119,33 @@ conn_close:
         return (void *) (intptr_t) ret;
 }
 
-static int event_loop(const int sockfd) {
+static int event_loop(void) {
         while (1) {
+                int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+                if (sockfd < 0) {
+                        dprintf(2, "Error while trying to open socket\n");
+                        // return EXIT_FAILURE;
+                }
+
+                struct sockaddr_in source = {.sin_family = AF_INET, .sin_addr.s_addr = 0, .sin_port = htons(8080)};
+                if (bind(sockfd, (struct sockaddr *) &source, sizeof(source)) < 0) {
+                        dprintf(2, "Error while trying to bind\n");
+                        // return EXIT_FAILURE;
+                }
+
+
+                if (listen(sockfd, 0) < 0) {
+                        dprintf(2, "Error while trying to listen on port: %i\n", source.sin_port);
+                        // return EXIT_FAILURE;
+                }
+
                 struct sockaddr destination = {};
                 const size_t dest_len = sizeof(destination);
 
                 int destfd;
                 if ((destfd = accept(sockfd, &destination, dest_len)) < 0) {
                         dprintf(2, "Error while trying to accept connection\n");
+                        close(sockfd);
                         continue;
                 }
 
@@ -138,26 +157,7 @@ static int event_loop(const int sockfd) {
 
 
 int main(int argc, char *argv[]) {
-        int sockfd = socket(AF_INET, SOCK_STREAM, 0);
-        if (sockfd < 0) {
-                dprintf(2, "Error while trying to open socket\n");
-                return EXIT_FAILURE;
-        }
+        event_loop();
 
-        struct sockaddr_in source = {.sin_family = AF_INET, .sin_addr.s_addr = 0, .sin_port = htons(8080)};
-        if (bind(sockfd, (struct sockaddr *) &source, sizeof(source)) < 0) {
-                dprintf(2, "Error while trying to bind\n");
-                return EXIT_FAILURE;
-        }
-
-
-        if (listen(sockfd, 0) < 0) {
-                dprintf(2, "Error while trying to listen on port: %i\n", source.sin_port);
-                return EXIT_FAILURE;
-        }
-
-        event_loop(sockfd);
-
-        close(sockfd);
         return 0;
 }
