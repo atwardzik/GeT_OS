@@ -145,14 +145,23 @@ static struct Chunk *find_chunk_by_ptr(const void *ptr) {
 }
 
 void *krealloc(void *ptr, size_t new_size) {
+        new_size = align_size(new_size);
+        struct Chunk *current = find_chunk_by_ptr(ptr);
+        //TODO: extend existing block if there is free space between current and next
+        if (current->next_node == nullptr) {
+                const size_t addend = new_size - current->size;
+                current->size += addend;
+                Allocator.allocated_size += addend;
+                return ptr;
+        }
+
         void *new_ptr = kmalloc(new_size);
         if (!new_ptr) {
                 return nullptr;
         }
 
-        const struct Chunk *current = find_chunk_by_ptr(ptr);
 
-        memcpy(new_ptr, ptr, current->size);
+        memmove(new_ptr, ptr, current->size);
 
         kfree(ptr);
         return new_ptr;
@@ -178,7 +187,11 @@ void *sys_realloc(void *ptr, size_t new_size) {
                         current_process->heap_pages[i] = new_ptr;
                         current_process->allocated_memory += size_after - size_before;
                 }
+
+                return new_ptr;
         }
+
+        return nullptr;
 }
 
 void kfree(void *ptr) {
