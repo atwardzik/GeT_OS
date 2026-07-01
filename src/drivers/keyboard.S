@@ -8,15 +8,17 @@
 
 
 /**
- * +--------------+------------------+---------------------+
- * | Key          | (Set 2) Make Code| (Set 2) Break Code  |
- * +--------------+------------------+---------------------+
- * | "A"          | 1C               | F0,1C               |
- * | "5"          | 2E               | F0,2E               |
- * | "F10"        | 09               | F0,09               |
- * | Right Arrow  | E0,74            | E0,F0,74            |
- * | Right "Ctrl" | E0,14            | E0,F0,14            |
- * +--------------+------------------+---------------------+
+ * +--------------+-----------------------------+---------------------+
+ * | Key          | (Set 2) Make Code           | (Set 2) Break Code  |
+ * +--------------+-----------------------------+---------------------+
+ * | "A"          | 1C                          | F0,1C               |
+ * | "5"          | 2E                          | F0,2E               |
+ * | "F10"        | 09                          | F0,09               |
+ * | Right Arrow  | E0,74                       | E0,F0,74            |
+ * | Right "Ctrl" | E0,14                       | E0,F0,14            |
+ * | Print Screen | E0,12,E0,7C                 | E0,F0,7C,E0,F0,12   |
+ * | Pause/Break  | E1,14,77,E1,F0,14,F0,77     |         N/A         |
+ * +--------------+-----------------------------+---------------------+
  */
 
 @ Please note that the pins are consecutive, e.g. when starting at pin 2, pins {2,3,4,5} will be treaded as input
@@ -125,7 +127,7 @@ init_keyboard:
 
         pop     {r4, r5, pc}
 
-#else @KEYBOARD_SERIAL_INTERFACE
+#else @ KEYBOARD_SERIAL_INTERFACE
 
 /**
  * Initialize interrupts and data input for keyboard with PS-2 connector.
@@ -152,7 +154,7 @@ init_keyboard:
         movs    r2, #1                  @ PIO1
         bl      load_pio_prog
 
-        @ 2) Set state machine exec ctrl with wrap (SM0_EXECCTRL); 
+        @ 2) Set state machine exec ctrl with wrap (SM0_EXECCTRL);
         @ (CLK pin << 24) | (WRAP_TARGET << 7) | (WRAP << 12)
         movs    r0, #1                  @ PIO BLOCK 1
         movs    r1, #0                  @ State Machine 0
@@ -327,7 +329,7 @@ keyboard_interrupt_handler:
                 ldr     r1, =scancode_read
                 ldrb    r0, [r1]
 
-                ldr     r2, caps_lock_flag
+                ldr     r2, caps_lock_flag              @ TODO: when caps lock is set only affect alpha chars
                 ldr     r3, shift_flag
                 orrs    r3, r2, r3
                 ldr     r2, =keyboard_flags
@@ -349,7 +351,8 @@ keyboard_interrupt_handler:
 
                 ldr     r3, ctrl_flag
                 tst     r2, r3
-                bne     .ctrl_lookup
+                it      ne
+                andne   r0, r0, #0b00011111
 
                 beq     .write_to_buffer
 
@@ -392,48 +395,6 @@ keyboard_interrupt_handler:
                         movseq  r0, #128
 
                         b       .write_to_buffer
-
-                .ctrl_lookup:
-                        @ Escape sequences
-                        cmp     r0, 'c'
-                        it      eq
-                        movseq  r0, #0x03
-
-                        cmp     r0, 'd'
-                        it      eq
-                        movseq  r0, #0x04       @ (EOT, ^D) End Of File character on Unix terminals.[3]
-
-                        cmp     r0, 'g'
-                        it      eq
-                        movseq  r0, #0x07       @ (bell, BEL, \a, ^G), which may cause the device to emit a warning such as a bell or beep sound or the screen flashing.
-
-                        cmp     r0, 'h'
-                        it      eq
-                        movseq  r0, #0x08       @ (backspace, BS, \b, ^H), may overprint the previous character.
-
-                        cmp     r0, 'i'
-                        it      eq
-                        movseq  r0, #0x09       @ (horizontal tab, HT, \t, ^I), moves the printing position right to the next tab stop.
-
-                        cmp     r0, 'j'
-                        it      eq
-                        movseq  r0, #0x0A       @ (line feed, LF, \n, ^J), moves the print head down one line (and maybe to the left edge). Used as the end of line marker in Unix-like systems.
-
-                        cmp     r0, 'k'
-                        it      eq
-                        movseq  r0, #0x0B       @ (vertical tab, VT, \v, ^K), vertical tabulation.
-
-                        cmp     r0, 'l'
-                        it      eq
-                        movseq  r0, #0x0C       @ (form feed, FF, \f, ^L), to cause a printer to eject paper to the top of the next page, or a video terminal to clear the screen.
-
-                        cmp     r0, 'm'
-                        it      eq
-                        movseq  r0, #0x0D       @ (carriage return, CR, \r, ^M), moves the printing position to the start of the line, allowing overprinting. Used as the end of line marker in Classic Mac OS, OS-9, FLEX (and variants). A CR+LF pair is used by CP/M-80 and its derivatives including DOS and Windows.
-
-                        cmp     r0, '['
-                        it      eq
-                        movseq  r0, #0x1B       @ (escape, ESC, \e (GCC only), ^[). Introduces an escape sequence.
 
 #endif
         .write_to_buffer:
@@ -713,6 +674,8 @@ PADS_BANK0_BASE:        .word 0x4001c000
 INTR_OFFSET:            .word 0x0f0
 PROC0_INTE0_OFFSET:     .word 0x100
 
+nibble_reverse_lookup:  .byte 0x0, 0x8, 0x4, 0xC, 0x2, 0xA, 0x6, 0xE, 0x1, 0x9, 0x5, 0xD, 0x3, 0xB, 0x7, 0xF
+
 #elifdef ARCH_RP2350
 IO_BANK0_BASE:          .word 0x40028000
 PADS_BANK0_BASE:        .word 0x40038000
@@ -734,22 +697,19 @@ escape_flag:            .word 0b001000
 alt_flag:               .word 0b010000
 caps_lock_flag:         .word 0b100000
 
-.align 4
-nibble_reverse_lookup:  .byte 0x0, 0x8, 0x4, 0xC, 0x2, 0xA, 0x6, 0xE, 0x1, 0x9, 0x5, 0xD, 0x3, 0xB, 0x7, 0xF
-
 
 .section .data
 .align 4
+#ifdef KEYBOARD_PARALLEL_INTERFACE
 interrupt_pin:          .word 0
 edge_high_bit:          .word 0
-byte_read:              .word 0
+#endif
 
 scancode_read:          .word 0
 keyboard_flags:         .word 0
 
-.align 4
-keyboard_buffer:        .fill 256, 1, 0
-buffer_offset:          .byte 0                 @ when overflow starts again at 0
+keyboard_buffer:        .fill 64, 1, 0
+buffer_offset:          .byte 0                 @ keep track, it should not exceed keyboard_buffer size!
 
 .section .rodata, "a"
 .align 4
