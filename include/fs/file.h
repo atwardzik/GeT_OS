@@ -144,7 +144,9 @@ struct FileOperations {
 
         int (*close)(struct File *file);
 
-        int (*flush)(struct File *);
+        int (*flush)(struct File *file);
+
+        int (*ioctl)(struct File *file, uint64_t request, void *arg);
 };
 
 struct Files {
@@ -161,6 +163,8 @@ int sys_close(int file);
 int sys_read(int file, char *ptr, int len);
 
 int sys_write(int file, char *ptr, int len);
+
+int sys_ioctl(int file, unsigned long request, void *arg);
 
 int sys_readdir(int dirfd, struct DirectoryEntry *directory_entry);
 

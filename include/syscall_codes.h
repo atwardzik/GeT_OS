@@ -19,6 +19,7 @@
 #define LSEEK_SVC       11
 #define FSTAT_SVC       12
 #define GETCWD_SVC      13
+#define IOCTL_SVC       14
 
 #define GET_TIME_SVC    20
 #define GET_PID_SVC     21

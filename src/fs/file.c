@@ -262,6 +262,23 @@ int sys_write(const int file, char *ptr, const int len) {
         return -1;
 }
 
+int sys_ioctl(int file, unsigned long request, void *arg) {
+        struct Process const *current_process = scheduler_get_current_process();
+
+        if (file >= current_process->files.count || file < 0 || current_process->files.fdtable[file] == nullptr) {
+                printk("[!] There is no such file descriptor\n");
+                __asm__("bkpt   #0");
+                return -1;
+        }
+
+        struct File *current_file = current_process->files.fdtable[file];
+        if (current_file->f_op->ioctl) {
+                return current_file->f_op->ioctl(current_file, request, arg);
+        }
+
+        return -1;
+}
+
 int sys_lseek(const int file, off_t offset, int whence) {
         struct Process const *current_process = scheduler_get_current_process();
 
