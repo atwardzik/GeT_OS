@@ -11,6 +11,4 @@ void init_keyboard(uint32_t data_pin, uint32_t clock_pin);
 
 void clr_keyboard_buffer(void);
 
-const int keyboard_receive_char(void);
-
 #endif //KERNEL_KEYBOARD_H

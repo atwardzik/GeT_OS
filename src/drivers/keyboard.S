@@ -38,6 +38,7 @@
 .equ ARROW_DOWN, 0x42
 .equ ARROW_RIGHT, 0x43
 .equ ARROW_LEFT, 0x44
+.equ ESCAPE, 0x1b
 
 #ifdef KEYBOARD_PARALLEL_INTERFACE
 /**
@@ -285,26 +286,21 @@ keyboard_interrupt_handler:
                 bl      clr_flag
 
                 bl      read_byte
-                ldr     r1, =scancode_read
-                ldr     r1, [r1]
-                cmp     r1, #0x12
+                cmp     r0, #0x12
                 beq    .shift_released
-                cmp     r1, #0x59
+                cmp     r0, #0x59
                 beq     .shift_released
 
-                cmp     r1, #0x14
+                cmp     r0, #0x14
                 beq     .ctrl_released
 
-                cmp     r1, #0x11
+                cmp     r0, #0x11
                 beq     .alt_released
 
                 b       .exit
 
         .read_key:
                 bl      read_byte
-
-                ldr     r0, =scancode_read
-                ldr     r0, [r0]
 
                 cmp     r0, #0xf0
                 beq     .key_released
@@ -325,25 +321,22 @@ keyboard_interrupt_handler:
                 cmp     r0, #0xe0
                 beq     .escape_code_sequence_pressed
 
-        .scancode_to_ascii:
-                ldr     r1, =scancode_read
-                ldrb    r0, [r1]
+                cmp     r0, #0x76
+                itt     eq
+                moveq   r0, ESCAPE
+                beq     .exit_with_char
 
+        .scancode_to_ascii:
                 ldr     r2, caps_lock_flag              @ TODO: when caps lock is set only affect alpha chars
                 ldr     r3, shift_flag
                 orrs    r3, r2, r3
                 ldr     r2, =keyboard_flags
                 ldr     r2, [r2]
                 tst     r2, r3
-                beq     .select_keymap_normal
-
-                .select_shifted_keymap:
-                        ldr     r1, =keymap_shifted
-                        b       .convert_to_keymap
-                .select_keymap_normal:
-                        ldr     r1, =keymap
-                .convert_to_keymap:
-                        ldrb    r0, [r1, r0]
+                ite     eq
+                ldreq   r1, =keymap
+                ldrne   r1, =keymap_shifted
+                ldrb    r0, [r1, r0]                    @ scancode to ascii lookup table translate
 
                 ldr     r3, alt_flag
                 tst     r2, r3
@@ -354,7 +347,7 @@ keyboard_interrupt_handler:
                 it      ne
                 andne   r0, r0, #0b00011111
 
-                beq     .write_to_buffer
+                beq     .exit_with_char
 
 @TODO: make version for ARCH_RP2040
 #ifdef ARCH_RP2350
@@ -394,20 +387,8 @@ keyboard_interrupt_handler:
                         it      eq
                         movseq  r0, #128
 
-                        b       .write_to_buffer
-
+                        b       .exit_with_char
 #endif
-        .write_to_buffer:
-                ldr     r1, =keyboard_buffer
-                ldr     r2, =buffer_offset
-                ldrb    r3, [r2]
-                strb    r0, [r1, r3]
-                adds    r3, r3, #1
-                strb    r3, [r2]
-
-                adds    r3, r3, r1
-                subs    r0, r3, #1
-                b       .exit_with_char
 
         .manage_escape_sequence:
                 ldr     r0, escape_flag
@@ -430,33 +411,26 @@ keyboard_interrupt_handler:
                 @ ARROWS
 
                 cmp     r0, #0x72
-                beq     .case_arrow_down
-                cmp     r0, #0x74
-                beq     .case_arrow_right
-                cmp     r0, #0x75
-                beq     .case_arrow_up
-                cmp     r0, #0x6B
-                beq     .case_arrow_left
+                itt     eq
+                moveq   r0, ARROW_DOWN
+                beq     .exit_with_escape_code
 
-                @ CTRL + KEY sequences
+                cmp     r0, #0x74
+                itt     eq
+                moveq   r0, ARROW_RIGHT
+                beq     .exit_with_escape_code
+
+                cmp     r0, #0x75
+                itt     eq
+                moveq   r0, ARROW_UP
+                beq     .exit_with_escape_code
+
+                cmp     r0, #0x6B
+                itt     eq
+                moveq   r0, ARROW_LEFT
+                beq     .exit_with_escape_code
 
                 b       .exit
-
-        .case_arrow_up:
-                movs    r0, ARROW_UP
-                b       .exit_with_escape_code
-
-        .case_arrow_down:
-                movs    r0, ARROW_DOWN
-                b       .exit_with_escape_code
-
-        .case_arrow_left:
-                movs    r0, ARROW_LEFT
-                b       .exit_with_escape_code
-
-        .case_arrow_right:
-                movs    r0, ARROW_RIGHT
-                b       .exit_with_escape_code
 
         .shift_pressed:
                 ldr     r0, shift_flag
@@ -520,14 +494,11 @@ keyboard_interrupt_handler:
                 ldr     r1, =0x1b5b00
                 orrs    r0, r0, r1
                 bl      write_to_keyboard_buffer
-                bl      clr_keyboard_buffer
                 pop     {pc}
 
         .exit_with_char:
                 cpsie   i
-                ldr     r0, [r0]
                 bl      write_to_keyboard_buffer
-                bl      clr_keyboard_buffer
                 pop     {pc}
 
 
@@ -567,7 +538,6 @@ read_byte:
         push    {r4, lr}
         ldr     r0, SIO_BASE
         adds    r0, r0, GPIO_IN
-        ldr     r2, =scancode_read
         movs    r3, NIBBLE_MASK
         ldr     r4, =nibble_reverse_lookup
 
@@ -579,7 +549,7 @@ read_byte:
 
                 ldrb    r1, [r4, r1]                   @ lookup in table
                 lsls    r1, r1, #4
-                strb    r1, [r2]
+                mov     r2, r1
 
         .read_lower_nibble:
                 ldr     r1, [r0]
@@ -588,11 +558,9 @@ read_byte:
                 ands    r1, r1, r3                     @ leave lower nibble
 
                 ldrb    r1, [r4, r1]                   @ lookup in table
-                ldrb    r3, [r2]
-                add     r3, r3, r1
-                strb    r3, [r2]
+                add     r2, r2, r1
 
-        mov     r0, r3
+        mov     r0, r2
         pop     {r4, pc}
 
 #else @ KEYBOARD_SERIAL_INTERFACE
@@ -608,63 +576,9 @@ read_byte:
 
         lsrs    r0, #24
 
-        ldr     r1, =scancode_read
-        strb    r0, [r1]
         pop     {pc}
 
 #endif
-
-
-.thumb_func
-.global clr_keyboard_buffer
-.align 4
-clr_keyboard_buffer:
-        ldr     r0, =buffer_offset
-        movs    r1, #0
-        strb    r1, [r0]
-
-        bx      lr
-
-
-.thumb_func
-.global keyboard_receive_char
-.align 4
-keyboard_receive_char:
-        push    {r4}
-        ldr     r1, =buffer_offset
-        movs    r0, #0
-        strb    r0, [r1]
-
-        .wait_for_char:
-                ldr     r1, =buffer_offset
-                ldrb    r1, [r1]
-                cmp     r0, r1
-                beq     .wait_for_char
-
-        subs    r1, r1, r0              @ how many bytes were written
-        ldr     r2, =keyboard_buffer
-        ldr     r3, =buffer_offset
-        ldrb    r3, [r3]
-        subs    r3, r3, r1              @ move offset to the beginning of written chars
-
-        ldrb    r0, [r2, r3]
-
-        .read_bytes_loop:
-                adds    r3, r3, #1
-                subs    r1, r1, #1
-                cmp     r1, #0
-                beq     .exit_reading_bytes
-
-                lsls    r0, r0, #8
-                ldrb    r4, [r2, r3]
-                adds    r0, r0, r4
-
-                b       .read_bytes_loop
-
-
-        .exit_reading_bytes:
-                pop     {r4}
-                bx      lr
 
 
 #ifdef ARCH_RP2040
@@ -705,11 +619,7 @@ interrupt_pin:          .word 0
 edge_high_bit:          .word 0
 #endif
 
-scancode_read:          .word 0
 keyboard_flags:         .word 0
-
-keyboard_buffer:        .fill 64, 1, 0
-buffer_offset:          .byte 0                 @ keep track, it should not exceed keyboard_buffer size!
 
 .section .rodata, "a"
 .align 4
