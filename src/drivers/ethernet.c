@@ -435,15 +435,12 @@ static void add_to_socket_pointer_reg(struct WIZnetSocket *socket, uint16_t reg_
         eth_write_mem(reg_offset, ptr, 2);
 }
 
-static bool fits_socket_txbuf(const struct WIZnetSocket *socket, const size_t frame_size) {
+static size_t socket_txbuf_free_space(const struct WIZnetSocket *socket) {
         uint8_t free_space[2];
         eth_read_mem(SN_TX_FSR(socket->index), free_space, 2);
         const uint16_t current_free_space = (free_space[0] << 8) | (free_space[1]);
-        if (frame_size <= current_free_space) {
-                return true;
-        }
 
-        return false;
+        return current_free_space;
 }
 
 static void write_txbuf(struct WIZnetSocket *socket, const uint8_t *frame, const uint16_t frame_size) {
@@ -495,9 +492,24 @@ static int read_rxbuf(struct WIZnetSocket *socket, uint8_t *buffer, const uint16
 
 
 static int tx_frame(struct File *socket_file, void *frame, const size_t frame_size, off_t) {
+        if (!frame_size) {
+                return 0;
+        }
         struct WIZnetSocket *socket = (struct WIZnetSocket *) socket_file;
-        if (!fits_socket_txbuf(socket, frame_size)) {
-                return -EMSGSIZE;
+        size_t txbuf_free_space = socket_txbuf_free_space(socket);
+        if (txbuf_free_space < frame_size) {
+                size_t sent_bytes = 0;
+                while (sent_bytes < frame_size) {
+                        // while ((txbuf_free_space = socket_txbuf_free_space(socket)) == 0);
+                        txbuf_free_space = socket_txbuf_free_space(socket);
+                        const int res = tx_frame(socket_file, frame + sent_bytes, txbuf_free_space, 0);
+                        if (res == 0) {
+                                break;
+                        }
+                        sent_bytes += res;
+                }
+
+                return sent_bytes;
         }
 
         write_txbuf(socket, frame, frame_size);
