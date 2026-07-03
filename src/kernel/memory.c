@@ -99,6 +99,8 @@ void *kmalloc(size_t size) {
 void *sys_malloc(size_t size) {
         struct Process *current_process = scheduler_get_current_process();
 
+        //FIXME: preallocate pages in libc so that the code below is valid
+#if 0
         int free_heap_page_index = -1;
         for (size_t i = 0; i < 4; ++i) {
                 if (current_process->heap_pages[i] == nullptr) {
@@ -110,6 +112,7 @@ void *sys_malloc(size_t size) {
                 return nullptr;
         }
 
+#endif
         const size_t size_before = Allocator.allocated_size;
         void *ptr = kmalloc(size);
         if (!ptr) {
@@ -117,7 +120,7 @@ void *sys_malloc(size_t size) {
         }
         const size_t size_after = Allocator.allocated_size;
 
-        current_process->heap_pages[free_heap_page_index] = ptr;
+        // current_process->heap_pages[free_heap_page_index] = ptr;
         current_process->allocated_memory += size_after - size_before;
 
         return ptr;
@@ -174,6 +177,7 @@ void *sys_realloc(void *ptr, size_t new_size) {
 
         struct Process *current_process = scheduler_get_current_process();
 
+#if 0
         for (size_t i = 0; i < 4; ++i) {
                 if (current_process->heap_pages[i] != ptr) {
                         continue;
@@ -188,6 +192,15 @@ void *sys_realloc(void *ptr, size_t new_size) {
                         current_process->allocated_memory += size_after - size_before;
                 }
 
+                return new_ptr;
+        }
+#endif
+        const size_t size_before = Allocator.allocated_size;
+        void *new_ptr = krealloc(ptr, new_size);
+        const size_t size_after = Allocator.allocated_size;
+
+        if (new_ptr) {
+                current_process->allocated_memory += size_after - size_before;
                 return new_ptr;
         }
 

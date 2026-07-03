@@ -14,6 +14,106 @@
 
 // DO NOT TRY TO CALL KERNEL FUNCTIONS FROM USER SPACE OTHER THAN SYSCALLS!!!
 
+struct FileLine {
+        unsigned int line_number;
+        off_t file_offset;
+        char *line;
+};
+
+int vi(int argc, char **argv) {
+        // if (argc < 2) {
+        //         dprintf(2, "[!] Not enough parameters supplied.");
+        //         return 1;
+        // }
+
+        const int fd = open("/mnt/disk0/index.htm", O_RDONLY, 0);
+        if (fd < 0) {
+                dprintf(2, "[!] No such file.");
+                return 1;
+        }
+        const size_t file_len = lseek(fd, 0, SEEK_END);
+        lseek(fd, 0, SEEK_SET);
+
+        struct FileLine *screen = malloc(40 * sizeof(struct FileLine));
+        if (!screen) {
+                dprintf(2, "[!] Not enough memory.");
+                return 1;
+        }
+        memset(screen, 0, 40 * sizeof(struct FileLine));
+
+        char *buf = malloc(1025);
+        if (!buf) {
+                dprintf(2, "[!] Not enough memory.");
+                return 1;
+        }
+        int line_index = 0;
+        int file_offset = 0;
+        int bytes_read = 0;
+        while ((bytes_read = read(fd, buf, 1024))) {
+                buf[1024] = 0;
+                file_offset += bytes_read;
+
+                int current_pos = 0;
+                while (current_pos < 1024) {
+                        int endl_pos = strcspn(buf + current_pos, "\n");
+                        if (!endl_pos) {
+                                current_pos += 1;
+                                continue;
+                        }
+                        char *line = malloc(endl_pos + 1);
+                        if (!line) {
+                                dprintf(2, "[!] Not enough memory.");
+                                return 1;
+                        }
+                        memmove(line, buf + current_pos, endl_pos);
+                        line[endl_pos] = 0;
+                        if (current_pos + endl_pos == 1024 && file_offset < file_len && endl_pos == strlen(line)) {
+                                //we are in the middle of the line :/
+
+                                bytes_read = read(fd, buf, 1024);
+                                buf[1024] = 0;
+                                file_offset += bytes_read;
+                                current_pos = 0;
+                                endl_pos = strcspn(buf, "\n");
+                                const size_t line_len = strlen(line);
+                                char *rline = krealloc(line, line_len + endl_pos);
+                                if (!rline) {
+                                        dprintf(2, "[!] Not enough memory.");
+                                        return 1;
+                                }
+                                line = rline;
+                                memmove(line + line_len, buf + current_pos, endl_pos);
+                                line[line_len + endl_pos] = 0;
+                        }
+                        screen[line_index] = (struct FileLine){
+                                line_index,
+                                file_offset - bytes_read + current_pos,
+                                line
+                        };
+
+                        current_pos += endl_pos + 1;
+                        line_index += 1;
+
+                        if (line_index == 40) {
+                                goto printfile;
+                        }
+                }
+        }
+
+printfile:
+        free(buf);
+        printf("The File:\n");
+        for (int i = 0; i < line_index; ++i) {
+                printf("%s\n", screen[i].line);
+        }
+
+
+        for (int i = 0; i < 40; ++i) {
+                free(screen[i].line);
+        }
+        free(screen);
+        return 0;
+}
 
 struct cpio_newc_header {
         char c_magic[6];
@@ -159,6 +259,8 @@ void PATER_ADAMVS(int argc, char *argv[]) {
                 printf("\x1b[91;40m[!] No such file.\x1b[0m\n");
                 __asm__("bkpt   #0");
         }
+
+        [[maybe_unused]] const int vi_pid = spawnp((void (*)(void)) vi, nullptr, nullptr, nullptr, nullptr);
 
         while (1) {
                 printf("\x1b[96;40m[!] Running shell (gsh)\x1b[0m\n");

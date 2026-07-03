@@ -178,13 +178,14 @@ static ssize_t follow_fat_chain(struct File *file, void *buf, const size_t count
         } while (remaining_bytes && cluster >= 3 && cluster <= 0xffef);
 
         kfree(temp_buf);
+        const off_t starting_position = file->f_pos;
         if (file->f_pos + count > file->f_inode->i_size) {
                 file->f_pos = file->f_inode->i_size;
         }
         else {
                 file->f_pos += count;
         }
-        return count;
+        return file->f_pos - starting_position;
 }
 
 static ssize_t FAT16_read(struct File *file, void *buf, const size_t count, const off_t file_offset) {
