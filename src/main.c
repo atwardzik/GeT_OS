@@ -21,32 +21,32 @@ struct FileLine {
 };
 
 /**
- * Appends positions of newline characters to the array of positions, starting at given index
+ * Appends offsets of next lines to the array of positions, starting at given index
  *
- * @param positions array of newline positions in given buffer
- * @param count last index in the array of positions
- * @param positions_size size of the array of positions
+ * @param offsets array of offsets in given buffer
+ * @param count last index in the array of offsets
+ * @param positions_size size of the array of offsets
  * @param data data buffer
  * @param data_count size of the data buffer
  *
- * @return number of newline positions found in the given buffer
+ * @return number of lines found in the given buffer
  */
-int append_newline_positions(
-        int *positions, const int count, const size_t positions_size, const char *data, const size_t data_count
+int append_line_offsets(
+        int *offsets, const int count, const size_t positions_size, const char *data, const size_t data_count
 ) {
         int endl_position = -1;
         int current_position = 0;
-        int i = count == 0 ? 0 : count;
+        int i = count;
 
         while (i < positions_size) {
                 endl_position = strcspn(data + current_position, "\n");
+                offsets[i] = current_position;
+
+                i += 1;
                 if (current_position + endl_position == data_count) {
                         break;
                 }
-                positions[i] = current_position + endl_position;
-
                 current_position += endl_position + 1;
-                i += 1;
         }
 
         return i - count;
@@ -80,49 +80,45 @@ int vi(int argc, char **argv) {
         }
         int file_offset = 0;
         int bytes_read = 0;
-        int newline_positions[40] = {};
-        int newline_count = 0;
+        int line_offsets[40] = {};
+        int line_count = 0;
+        int screen_line_index = 0;
         bool middle_of_line = false;
         bool exit_after_ending_line = false;
         while ((bytes_read = read(fd, buf, 1024))) {
                 buf[1024] = 0;
-                int block_newline_count = 0;
-                if (file_offset + bytes_read == file_len) {
-                        block_newline_count = append_newline_positions(newline_positions, newline_count, 40,
-                                                                       buf, bytes_read);
-                }
-                else {
-                        block_newline_count = append_newline_positions(newline_positions, newline_count, 40,
-                                                                       buf, bytes_read);
-                }
+                int block_line_count = 0;
+                block_line_count = append_line_offsets(line_offsets, line_count, 40, buf, bytes_read);
 
-                int newline_index = newline_count;
+                int line_index = screen_line_index;
 
                 if (middle_of_line) {
+                        line_index -= 1;
                         const size_t to_copy = strcspn(buf, "\n") + 1;
 
-                        const size_t line_len = strlen(screen[newline_index].line);
-                        char *rline = realloc(screen[newline_index].line, line_len + to_copy);
+                        const size_t line_len = strlen(screen[line_index].line);
+                        char *rline = realloc(screen[line_index].line, line_len + to_copy);
                         if (!rline) {
                                 dprintf(2, "[!] Not enough memory.");
                                 return 1;
                         }
-                        screen[newline_index].line = rline;
-                        memmove(screen[newline_index].line + line_len, buf, to_copy);
-                        screen[newline_index].line[line_len + to_copy] = 0;
+                        screen[line_index].line = rline;
+                        memmove(screen[line_index].line + line_len, buf, to_copy);
+                        screen[line_index].line[line_len + to_copy] = 0;
 
                         middle_of_line = false;
-                        newline_index += 1;
+                        line_index += 2;
                         if (exit_after_ending_line) {
                                 break;
                         }
                 }
 
-                for (int i = newline_index; i < newline_count + block_newline_count; ++i) {
-                        const off_t block_offset = i == newline_count ? 0 : newline_positions[i - 1] + 1;
-                        const size_t to_copy = i == 0
-                                                       ? newline_positions[0] + 1
-                                                       : newline_positions[i] - newline_positions[i - 1];
+                //it might be a single liner!
+                for (int i = line_index; i < line_count + block_line_count; ++i) {
+                        const off_t block_offset = line_offsets[i];
+                        const size_t to_copy = i < line_count + block_line_count - 1
+                                                       ? line_offsets[i + 1] - line_offsets[i]
+                                                       : strcspn(buf + block_offset, "\n");
 
                         char *line = malloc(to_copy + 1);
                         if (!line) {
@@ -131,37 +127,22 @@ int vi(int argc, char **argv) {
                         }
                         memmove(line, buf + block_offset, to_copy);
                         line[to_copy] = 0;
-                        screen[i] = (struct FileLine){
-                                i,
+                        screen[screen_line_index] = (struct FileLine){
+                                screen_line_index,
                                 file_offset + block_offset,
                                 line
                         };
-                }
+                        screen_line_index += 1;
 
-
-                newline_count += block_newline_count;
-                if ((block_newline_count == 0 || newline_positions[newline_count - 1] < bytes_read)
-                    && file_offset < file_len) {
-                        const off_t block_offset = block_newline_count == 0
-                                                           ? 0
-                                                           : newline_positions[newline_count - 1] + 1;
-                        const int to_copy = bytes_read - block_offset;
-
-                        char *line = malloc(to_copy + 1);
-                        if (!line) {
-                                dprintf(2, "[!] Not enough memory.");
-                                return 1;
+                        if (strcspn(buf + block_offset, "\n") == to_copy && file_offset < file_len) {
+                                middle_of_line = true;
+                                break;
                         }
-                        memmove(line, buf + block_offset, to_copy);
-                        line[to_copy] = 0;
-                        screen[newline_count] = (struct FileLine){
-                                newline_count,
-                                file_offset + block_offset,
-                                line
-                        };
-                        middle_of_line = true;
                 }
-                if (newline_count == 40) {
+
+
+                line_count += block_line_count;
+                if (line_count == 40) {
                         if (middle_of_line) {
                                 exit_after_ending_line = true;
                         }
@@ -175,13 +156,13 @@ int vi(int argc, char **argv) {
 printfile:
         free(buf);
         printf("The File:\n");
-        for (int i = 0; i < newline_count; ++i) {
+        for (int i = 0; i < line_count; ++i) {
                 char line[81];
-                const int len = strlen(screen[i].line);
-                const int to_copy = len > 80 ? 80 : len;
+                const int len = strcspn(screen[i].line, "\n");
+                const int to_copy = len > 75 ? 75 : len;
                 memcpy(line, screen[i].line, len);
                 line[to_copy] = 0;
-                printf("%s", line);
+                printf("%i| %s\n", i, line);
         }
 
 
