@@ -101,7 +101,7 @@ static struct {
 
         size_t total_allocated_memory;
 
-        void *main_kernel_stack; // TODO: see if it is needed after processes start running
+        void *main_kernel_stack;
 
         struct Process process_idle;
 } scheduler __attribute__((section(".data")));
@@ -110,6 +110,8 @@ constexpr pid_t PID_IDLE = 0xffff;
 constexpr pid_t PID_INIT = 1;
 
 static void idle(void) { while (1); }
+
+extern void action_ignore(int);
 
 static int create_idle_process() {
         void *process_page = kmalloc(IDLE_PROCESS_STACK_SIZE);
@@ -126,6 +128,7 @@ static int create_idle_process() {
 
         struct Process process = {
                 .pid = PID_IDLE,
+                .pgid = 0,
                 .pstate = READY,
                 .priority_level = 0,
                 .kernel_mode = false,
@@ -145,7 +148,10 @@ static int create_idle_process() {
                 .pending_signals = nullptr,
                 .signal_handled = false,
         };
-        init_default_sighandlers(&process);
+        for (int i = 0; i < 32; ++i) {
+                process.sighandlers[i] = action_ignore;
+        }
+        process.signal_mask = 0xffff'ffff;
 
         scheduler.process_idle = process;
 
@@ -341,6 +347,7 @@ static struct Process *create_blank_process(void (*process_entry_ptr)(void), voi
 
         struct Process process = {
                 .pid = pid,
+                .pgid = 0,
                 .pstate = NEW,
                 .priority_level = 0,
                 .kernel_mode = false,
@@ -399,6 +406,7 @@ pid_t sys_spawnp_process(
         process->root = current->root;
         process->pwd = current->pwd;
         process->parent = current;
+        process->pgid = current->pgid;
         process->max_children_count = current->max_children_count - 1;
         process->children = kmalloc(sizeof(struct Process *) * (current->max_children_count - 1));
         for (size_t i = 0; i < process->max_children_count; ++i) {
@@ -462,6 +470,7 @@ pid_t sys_spawn_process(
         process->root = current->root;
         process->pwd = current->pwd;
         process->parent = current;
+        process->pgid = current->pgid;
         process->max_children_count = current->max_children_count - 1;
         process->children = kmalloc(sizeof(struct Process *) * (current->max_children_count - 1));
         for (size_t i = 0; i < process->max_children_count; ++i) {
@@ -556,6 +565,51 @@ pid_t create_process_init(void (*process_entry_ptr)(void), struct VFS_Inode *roo
         return 0;
 }
 
+pid_t sys_getpid(void) {
+        const struct Process *current = scheduler.current_process;
+
+        return current->pid;
+}
+
+pid_t sys_getppid(void) {
+        const struct Process *current = scheduler.current_process;
+
+        return current->parent->pid;
+}
+
+pid_t sys_getpgid(pid_t pid) {
+        const struct Process *current = scheduler.current_process;
+
+        if (pid == 0) {
+                return current->pgid;
+        }
+
+        for (int i = 0; i < current->children_count; ++i) {
+                if (current->children[i]->pid == pid) {
+                        return current->children[i]->pgid;
+                }
+        }
+
+        return -ESRCH;
+}
+
+int sys_setpgid(const pid_t pid, const pid_t pgid) {
+        struct Process *current = scheduler.current_process;
+
+        if (pid == 0) {
+                current->pgid = pgid;
+                return 0;
+        }
+
+        for (int i = 0; i < current->children_count; ++i) {
+                if (current->children[i]->pid == pid) {
+                        current->children[i]->pgid = pgid;
+                        return 0;
+                }
+        }
+
+        return -ESRCH;
+}
 
 void sys_exit(int status) {
         struct Process *current = scheduler.current_process;

@@ -13,6 +13,12 @@
 #define STR_HELPER(x) #x
 #define STR(x) STR_HELPER(x)
 #define SYSCALL(syscall_number) __asm__("svc   #" STR(syscall_number) "\n\r");
+#define SYSCALL_RETURN(T, syscall_number) {                     \
+        T ret;                                                  \
+        SYSCALL(syscall_number)                                 \
+        __asm__("mov    %0, r0\n\r" : "=r"(ret));               \
+        return ret;                                             \
+}
 
 
 void exit(int code) { SYSCALL(EXIT_SVC) }
@@ -25,41 +31,24 @@ pid_t spawnp(
         void (*process_entry_ptr)(void), const spawn_file_actions_t *file_actions, const spawnattr_t *attrp,
         char *const argv[], char *const envp[]
 ) {
-        int ret;
-        SYSCALL(SPAWNP_SVC)
-        __asm__("mov    %0, r0\n\r" : "=r"(ret));
-
-        return ret;
+        SYSCALL_RETURN(pid_t, SPAWNP_SVC)
 }
 
 pid_t spawn(
         int fd, const spawn_file_actions_t *file_actions, const spawnattr_t *attrp, char *const argv[],
         char *const envp[]
 ) {
-        int ret;
-        SYSCALL(SPAWN_SVC)
-        __asm__("mov    %0, r0\n\r" : "=r"(ret));
-
-        return ret;
+        SYSCALL_RETURN(pid_t, SPAWN_SVC)
 }
 
 void sigreturn(void) { SYSCALL(SIGRETURN_SVC) }
 
 sighandler_t signal(int signum, sighandler_t handler) {
-        sighandler_t ret;
-        SYSCALL(SIGNAL_SVC)
-        __asm__("mov    %0, r0\n\r" : "=r"(ret));
-
-        return ret;
+        SYSCALL_RETURN(sighandler_t, SIGNAL_SVC)
 }
 
 pid_t wait(int *stat_loc) {
-        int ret;
-        SYSCALL(WAIT_SVC)
-
-        __asm__("mov    %0, r0\n\r" : "=r"(ret));
-
-        return ret;
+        SYSCALL_RETURN(int, WAIT_SVC)
 }
 
 
@@ -68,94 +57,64 @@ pid_t wait(int *stat_loc) {
  */
 
 int write(int file, const void *buf, int len) {
-        int res;
-
-        SYSCALL(WRITE_SVC)
-        __asm__("mov    %0, r0\n\r" : "=r"(res));
-
-        return res;
+        SYSCALL_RETURN(int, WRITE_SVC)
 }
 
 int read(int file, void *buf, int len) {
-        int res;
-
-        SYSCALL(READ_SVC)
-        __asm__("mov    %0, r0\n\r" : "=r"(res));
-
-        return res;
+        SYSCALL_RETURN(int, READ_SVC)
 }
 
 int open(const char *name, int flags, int mode) {
-        int ret;
-        SYSCALL(OPEN_SVC)
-        __asm__("mov    %0, r0\n\r" : "=r"(ret));
-
-        return ret;
+        SYSCALL_RETURN(int, OPEN_SVC)
 }
 
 int close(int file) {
-        int ret;
-        SYSCALL(CLOSE_SVC)
-        __asm__("mov    %0, r0\n\r" : "=r"(ret));
-
-        return ret;
+        SYSCALL_RETURN(int, CLOSE_SVC)
 }
 
 int ioctl(int file, unsigned long request, void *arg) {
-        int ret;
-        SYSCALL(IOCTL_SVC)
-        __asm__("mov    %0, r0\n\r" : "=r"(ret));
-
-        return ret;
+        SYSCALL_RETURN(int, IOCTL_SVC)
 }
 
 
 int fstat(int file, struct stat *st) {
-        int ret;
-        SYSCALL(FSTAT_SVC)
-        __asm__("mov    %0, r0\n\r" : "=r"(ret));
-
-        return ret;
+        SYSCALL_RETURN(int, FSTAT_SVC)
 }
 
 int kill(int pid, int sig) {
-        int ret;
-        SYSCALL(KILL_SVC)
-        __asm__("mov    %0, r0\n\r" : "=r"(ret));
-
-        return ret;
+        SYSCALL_RETURN(int, KILL_SVC)
 }
 
 int lseek(int file, int ptr, int dir) {
-        int ret;
-        SYSCALL(LSEEK_SVC)
-        __asm__("mov    %0, r0\n\r" : "=r"(ret));
-
-        return ret;
+        SYSCALL_RETURN(int, LSEEK_SVC)
 }
 
 int readdir(int dirfd, struct DirectoryEntry *directory_entry) {
-        int ret;
-        SYSCALL(READDIR_SVC)
-        __asm__("mov    %0, r0\n\r" : "=r"(ret));
-
-        return ret;
+        SYSCALL_RETURN(int, READDIR_SVC)
 }
 
 int chdir(const char *path) {
-        int ret;
-        SYSCALL(CHDIR_SVC)
-        __asm__("mov    %0, r0\n\r" : "=r"(ret));
-
-        return ret;
+        SYSCALL_RETURN(int, CHDIR_SVC)
 }
 
 char *getcwd(char *buf, unsigned int len) {
-        char *ret;
-        SYSCALL(GETCWD_SVC)
-        __asm__("mov    %0, r0\n\r" : "=r"(ret));
+        SYSCALL_RETURN(char *, GETCWD_SVC)
+}
 
-        return ret;
+pid_t getpid(void) {
+        SYSCALL_RETURN(pid_t, GET_PID_SVC)
+}
+
+pid_t getppid(void) {
+        SYSCALL_RETURN(pid_t, GET_PPID_SVC)
+}
+
+pid_t getpgid(pid_t pid) {
+        SYSCALL_RETURN(pid_t, GET_PGID_SVC)
+}
+
+int setpgid(pid_t pid, pid_t pgid) {
+        SYSCALL_RETURN(int, SET_PGID_SVC)
 }
 
 
@@ -164,43 +123,23 @@ char *getcwd(char *buf, unsigned int len) {
  */
 
 int socket(int domain, int type, int protocol) {
-        int ret;
-        SYSCALL(SOCKET_SVC)
-        __asm__("mov    %0, r0\n\r" : "=r"(ret));
-
-        return ret;
+        SYSCALL_RETURN(int, SOCKET_SVC)
 }
 
 int bind(int sockfd, const struct sockaddr *addr, size_t addrlen) {
-        int ret;
-        SYSCALL(BIND_SVC)
-        __asm__("mov    %0, r0\n\r" : "=r"(ret));
-
-        return ret;
+        SYSCALL_RETURN(int, BIND_SVC)
 }
 
 int listen(int sockfd, int backlog) {
-        int ret;
-        SYSCALL(LISTEN_SVC)
-        __asm__("mov    %0, r0\n\r" : "=r"(ret));
-
-        return ret;
+        SYSCALL_RETURN(int, LISTEN_SVC)
 }
 
 int accept(int sockfd, struct sockaddr *addr, size_t addrlen) {
-        int ret;
-        SYSCALL(ACCEPT_SVC)
-        __asm__("mov    %0, r0\n\r" : "=r"(ret));
-
-        return ret;
+        SYSCALL_RETURN(int, ACCEPT_SVC)
 }
 
 int connect(int sockfd, const struct sockaddr *addr, size_t adrlen) {
-        int ret;
-        SYSCALL(CONNECT_SVC)
-        __asm__("mov    %0, r0\n\r" : "=r"(ret));
-
-        return ret;
+        SYSCALL_RETURN(int, CONNECT_SVC)
 }
 
 /*
@@ -805,21 +744,11 @@ int memcmp(const void *dest, const void *src, const unsigned int count) {
 }
 
 void *malloc(size_t size) {
-        void *res;
-
-        SYSCALL(MALLOC_SVC)
-        __asm__("mov    %0, r0\n\r" : "=r"(res));
-
-        return res;
+        SYSCALL_RETURN(void *, MALLOC_SVC)
 }
 
 void *realloc(void *ptr, size_t new_size) {
-        void *res;
-
-        SYSCALL(REALLOC_SVC)
-        __asm__("mov    %0, r0\n\r" : "=r"(res));
-
-        return res;
+        SYSCALL_RETURN(void *, REALLOC_SVC)
 }
 
 void free(void *ptr) {

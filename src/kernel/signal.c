@@ -63,7 +63,7 @@ static void action_terminate(int) {
         // This is only the address, as the killing is done by the kernel
 }
 
-static void action_ignore(int) {
+void action_ignore(int) {
         //As the name suggests, this ignores the signal.
 }
 

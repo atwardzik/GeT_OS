@@ -13,21 +13,23 @@
 #define WRITE_SVC       5
 #define OPEN_SVC        6
 #define CLOSE_SVC       7
-#define WAIT_SVC        8
+#define IOCTL_SVC       8
 #define READDIR_SVC     9
 #define CHDIR_SVC       10
 #define LSEEK_SVC       11
 #define FSTAT_SVC       12
 #define GETCWD_SVC      13
-#define IOCTL_SVC       14
 
 #define GET_TIME_SVC    20
 #define GET_PID_SVC     21
 #define GET_PPID_SVC    22
-#define YIELD_SVC       23
-#define KILL_SVC        24
-#define SIGNAL_SVC      25
-#define SIGRETURN_SVC   26
+#define GET_PGID_SVC    23
+#define SET_PGID_SVC    24
+#define YIELD_SVC       25
+#define KILL_SVC        26
+#define SIGNAL_SVC      27
+#define SIGRETURN_SVC   28
+#define WAIT_SVC        29
 
 #define SOCKET_SVC      30
 #define BIND_SVC        31

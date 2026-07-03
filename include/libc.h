@@ -84,6 +84,8 @@
 #define TTY_ECHO                0
 #define TTY_CANONICAL           1
 #define TTY_CLEAR_SCREEN        2
+#define TTY_GPGRP               3
+#define TTY_SPGRP               4
 
 extern int optind;
 extern const char *optargs;
@@ -136,6 +138,14 @@ int chdir(const char *path);
 int lseek(int file, int offset, int whence);
 
 char *getcwd(char *buf, unsigned int len);
+
+pid_t getpid(void);
+
+pid_t getppid(void);
+
+pid_t getpgid(pid_t pid);
+
+int setpgid(pid_t pid, pid_t pgid);
 
 
 /* Process Syscalls */

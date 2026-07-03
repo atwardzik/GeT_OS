@@ -48,6 +48,7 @@ struct Process {
         /* General info */
 
         pid_t pid;
+        pid_t pgid;
         enum State pstate;
         unsigned int priority_level;
         int exit_code;
@@ -178,6 +179,14 @@ pid_t sys_wait(int *stat_loc);
  * @param status is an exit code that will be passed to the parent
  */
 [[noreturn]] void sys_exit(int status);
+
+pid_t sys_getpid(void);
+
+pid_t sys_getppid(void);
+
+pid_t sys_getpgid(pid_t pid);
+
+int sys_setpgid(pid_t pid, pid_t pgid);
 
 void sys_kill(pid_t pid, int sig);
 
