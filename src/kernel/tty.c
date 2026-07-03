@@ -69,6 +69,8 @@ static void insert_byte(int c) {
 static struct {
         wait_queue_head_t read_wait;
 
+        pid_t fg_pgid;
+
         size_t length;
         char buffer[] __attribute__((counted_by(length)));
 } *keyboard_device_file_stream;
@@ -120,13 +122,15 @@ static void handle_special_character(int c) {
                 tty_echo('C');
 
                 struct Process *process = nullptr;
-                if (keyboard_device_file_stream->read_wait) {
+                const struct Process *wq_top = top_from_wait_queue(&keyboard_device_file_stream->read_wait);
+                if (wq_top && wq_top->pgid == keyboard_device_file_stream->fg_pgid) {
                         process = pop_from_wait_queue(&keyboard_device_file_stream->read_wait);
                 }
                 else {
                         process = scheduler_get_current_process();
                 }
-                if (process) {
+
+                if (process && process->pgid == keyboard_device_file_stream->fg_pgid) {
                         signal_notify(process, SIGINT);
                 }
         }
@@ -245,12 +249,16 @@ static bool tty_is_ready() {
 }
 
 static ssize_t tty_read(struct File *, void *buf, const size_t count, off_t file_offset) {
+        const struct Process *process = scheduler_get_current_process();
+        if (process->pgid != keyboard_device_file_stream->fg_pgid) {
+                return -1; //not in fg process group
+        }
+
         wait_event_interruptible(&keyboard_device_file_stream->read_wait, tty_is_ready);
 
         const int stream_size = get_written_characters_count();
         const char *stream = keyboard_device_file_stream->buffer;
         if (stream_size == 0) {
-                // errno = EINTR;
                 return -1;
         }
 
@@ -263,6 +271,7 @@ static ssize_t tty_read(struct File *, void *buf, const size_t count, off_t file
         }
 
         reset_keyboard_buffer();
+        ptr[offset] = 0;
         return offset;
 }
 
@@ -285,6 +294,12 @@ static int tty_ioctl(struct File *file, const uint64_t request, void *arg) {
                         tty_canonical_mode = *(bool *) arg;
                         break;
                 case TTY_CLEAR_SCREEN:
+                        break;
+                case TTY_GPGRP:
+                        *(pid_t *) arg = keyboard_device_file_stream->fg_pgid;
+                        break;
+                case TTY_SPGRP:
+                        keyboard_device_file_stream->fg_pgid = *(pid_t *) arg;
                         break;
                 default:
                         return -1;
@@ -322,6 +337,7 @@ int setup_tty_chrfile(struct VFS_Inode *mount_point) {
         //         //todo: write per-tty configuration replacing static variables from this file
         // }
 
+        keyboard_device_file_stream->fg_pgid = 0;
         keyboard_device_file_stream->length = buf_size;
         keyboard_device_file_stream->read_wait = nullptr;
 

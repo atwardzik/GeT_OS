@@ -128,6 +128,7 @@ void proc1_terminate_signal_handler(int signum) {
 
 void proc1(void) {
         signal(SIGTERM, proc1_terminate_signal_handler);
+        setpgid(0, 1);
 
         while (1) {
                 xor_pin(11);
