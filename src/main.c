@@ -15,6 +15,7 @@
 // DO NOT TRY TO CALL KERNEL FUNCTIONS FROM USER SPACE OTHER THAN SYSCALLS!!!
 
 #define LINES_MAX       39    /* screen height - 1 for command*/
+#define INVALID_LINE    SIZE_MAX
 
 struct FileLine {
         size_t file_offset;
@@ -24,6 +25,14 @@ struct FileLine {
 struct Screen {
         unsigned int first_line_number;
         char *lines[LINES_MAX];
+};
+
+struct Editor {
+        struct FileLine *lines;
+        struct Screen *screen;
+
+        int fd;
+        int fdbak;
 };
 
 ssize_t readline(int fd, char **line_ptr, size_t *line_size) {
@@ -68,7 +77,9 @@ ssize_t readline(int fd, char **line_ptr, size_t *line_size) {
         }
         line[len] = 0;
         *line_ptr = line;
-        *line_size = buffer_size;
+        if (line_size) {
+                *line_size = buffer_size;
+        }
 
         lseek(fd, file_pos + len, SEEK_SET);
         return 0;
@@ -86,11 +97,11 @@ int index_file_lines(int fd, struct FileLine **lines, size_t *lines_size) {
         }
         char *buf = malloc(1025);
         if (!buf) {
-                dprintf(2, "[!] Not enough memory.");
+                dprintf(2, "[!] Not enough memory.\n");
                 return ENOMEM;
         }
 
-        (*lines)[0] = (struct FileLine){UINT16_MAX, false};
+        (*lines)[0] = (struct FileLine){INVALID_LINE, false};
 
         off_t file_offset = 0;
         size_t bytes_read = 0;
@@ -130,7 +141,7 @@ int index_file_lines(int fd, struct FileLine **lines, size_t *lines_size) {
                 file_offset += bytes_read;
         }
         while (i * sizeof(struct FileLine) < *lines_size) {
-                (*lines)[i] = (struct FileLine){UINT16_MAX, false};
+                (*lines)[i] = (struct FileLine){INVALID_LINE, false};
                 i += 1;
         }
 
@@ -138,60 +149,151 @@ int index_file_lines(int fd, struct FileLine **lines, size_t *lines_size) {
         return 0;
 }
 
+char *fetch_line_at(struct Editor *editor, const unsigned int line_index) {
+        char *newline = nullptr;
+        if (editor->lines[line_index].file_offset == INVALID_LINE) {
+                return nullptr;
+        }
+
+        lseek(editor->fd, editor->lines[line_index].file_offset, SEEK_SET);
+
+        if (readline(editor->fd, &newline, nullptr) != 0) {
+                return nullptr;
+        }
+
+        return newline;
+}
+
+void scroll_down(struct Editor *editor) {
+        int i = 1;
+        while (i < LINES_MAX - 1) {
+                editor->screen->lines[i] = editor->screen->lines[i + 1];
+                i += 1;
+        }
+}
+
+void print_line_at(const char *line, const unsigned int index) {
+        if (!strlen(line)) {
+                return;
+        }
+
+        char line_num[4] = {0x20, 0x20, 0x20, 0};
+        snprintf(line_num, 4, "%i", index);
+        printf("\x1b[90;49m%s\x1b[0m ", line_num);
+
+        int len = strlen(line) - 1;
+        len = len > 75 ? 75 : len;
+        write(1, line, len);
+
+        printf("\n");
+}
+
+void print_screen_at(const struct Editor *editor, const unsigned int start_line_index) {
+        lseek(editor->fd, editor->lines[start_line_index].file_offset, SEEK_SET);
+
+        for (int i = 0; i < LINES_MAX; ++i) {
+                char *line = nullptr;
+                size_t buflen = 0;
+                if (readline(editor->fd, &line, &buflen) == 0) {
+                        print_line_at(line, start_line_index + i);
+
+                        editor->screen->lines[i] = line;
+                }
+        }
+}
+
 int vi(int argc, char **argv) {
         // if (argc < 2) {
         //         dprintf(2, "[!] Not enough parameters supplied.");
         //         return 1;
         // }
+        pid_t pgid = 1;
+        setpgid(0, pgid);
+        ioctl(0, TTY_SPGRP, &pgid);
+        int ret = 0;
 
         const int fd = open("/mnt/disk0/start.s", O_RDONLY, 0);
         if (fd < 0) {
-                dprintf(2, "[!] No such file.");
+                dprintf(2, "[!] No such file.\n");
                 return 1;
         }
         struct FileLine *lines = nullptr;
         size_t lines_size = 0;
         if (index_file_lines(fd, &lines, &lines_size) == ENOMEM) {
                 if (!lines_size) {
-                        dprintf(2, "[!] Not enough memory.");
+                        dprintf(2, "[!] Not enough memory.\n");
                         return 1;
                 }
-                dprintf(2, "[!] The file is too long to index it's lines, so it is read-only.");
+                dprintf(2, "[!] The file is too long to index it's lines, so it is read-only.\n");
         }
-
 
         struct Screen *screen = malloc(sizeof(*screen));
         if (!screen) {
-                dprintf(2, "[!] Not enough memory.");
+                dprintf(2, "[!] Not enough memory.\n");
+                free(lines);
                 return 1;
         }
         memset(screen, 0, sizeof(*screen));
+        screen->first_line_number = 1;
+
+        struct Editor *editor = malloc(sizeof(*editor));
+        if (!editor) {
+                dprintf(2, "[!] Not enough memory.\n");
+                free(lines);
+                free(screen);
+                return 1;
+        }
+        editor->screen = screen;
+        editor->lines = lines;
+        editor->fd = fd;
+        editor->fdbak = -1;
 
         printf("\n");
-        for (int i = 1; i < LINES_MAX; ++i) {
-                char *line = nullptr;
-                size_t buflen = 0;
-                if (readline(fd, &line, &buflen) == 0) {
-                        char line_num[4] = {0x20, 0x20, 0x20, 0};
-                        snprintf(line_num, 4, "%i", i);
-                        printf("\x1b[90;49m%s\x1b[0m ", line_num);
+        print_screen_at(editor, 1);
 
-                        int len = strlen(line) - 1;
-                        len = len > 75 ? 75 : len;
-                        write(1, line, len);
-                        printf("\n");
-
-                        screen->lines[i] = line;
+        bool echo = false, canonical = false;
+        ioctl(0, TTY_ECHO, &echo);
+        ioctl(0, TTY_CANONICAL, &canonical);
+        char c;
+        while (read(0, &c, 1) > 0) {
+                switch (c) {
+                        case 'j': {
+                                char *line = fetch_line_at(editor, editor->screen->first_line_number + LINES_MAX);
+                                editor->screen->first_line_number += 1;
+                                free(editor->screen->lines[0]);
+                                scroll_down(editor);
+                                if (line) {
+                                        editor->screen->lines[LINES_MAX - 1] = line;
+                                }
+                                line = line ? line : "\n";
+                                print_line_at(line, editor->screen->first_line_number + LINES_MAX - 1);
+                        }
+                        break;
+                        case 'k': {
+                                // char *line = fetch_line_at(editor, editor->screen->first_line_number - 1);
+                                // editor->screen->first_line_number -= 1;
+                                // free(editor->screen->lines[LINES_MAX - 1]);
+                                // scroll_up(editor);
+                                // if (line) {
+                                        // editor->screen->lines[0] = line;
+                                // }
+                                // line = line ? line : "\n";
+                                // print_line_at(line, editor->screen->first_line_number);
+                        }
+                                break;
+                        default:
+                                break;
                 }
         }
 
+        free(lines);
         for (int i = 0; i < LINES_MAX; ++i) {
                 free(screen->lines[i]);
         }
         free(screen);
-        free(lines);
+        free(editor);
 
-        return 0;
+        return ret;
 }
 
 struct cpio_newc_header {
