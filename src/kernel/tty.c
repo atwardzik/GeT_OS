@@ -18,9 +18,6 @@
 #include "signal.h"
 
 
-//TODO: probably UART should be separated from screen terminal!
-
-
 void init_tty() {
         if (kconf->io_dev.uart.enabled) {
                 uart_init();
@@ -65,7 +62,6 @@ static void insert_byte(int c) {
         }
 }
 
-//TODO: remove and integrate with struct CharBuffer
 static struct {
         wait_queue_head_t read_wait;
 
@@ -334,7 +330,7 @@ int setup_tty_chrfile(struct VFS_Inode *mount_point) {
 
         // struct RAMFS_Inode *inode = (struct RAMFS_Inode *) mount_point;
         // if (inode->file_begin == nullptr) {
-        //         //todo: write per-tty configuration replacing static variables from this file
+        //         //TODO: write per-tty configuration replacing static variables from this file
         // }
 
         keyboard_device_file_stream->fg_pgid = 0;

@@ -184,8 +184,9 @@ void monitor_tm_write_byte(const int c) {
         static size_t escape_sequence_position = 0;
 
         if (escape_sequence_position || c == ESC) {
+                escape_sequence[escape_sequence_position] = (char) c;
                 if (c == 'm') {
-                        if (escape_sequence[2] == '0' && escape_sequence_position == 3) {
+                        if (memcmp(escape_sequence, "\x1b[0m", 4) == 0) { //
                                 set_background_color(&ScreenWriter.current_color_code, BLACK);
                                 set_foreground_color(&ScreenWriter.current_color_code, WHITE);
                                 escape_sequence_position = 0;
@@ -194,12 +195,17 @@ void monitor_tm_write_byte(const int c) {
                         }
 
                         ScreenWriter.current_color_code = decode_escape_colors(escape_sequence);
+                        if (memcmp(&escape_sequence[2], "39", 2) == 0) {
+                                set_foreground_color(&ScreenWriter.current_color_code, WHITE);
+                        }
+                        if (memcmp(&escape_sequence[5], "49", 2) == 0) {
+                                set_background_color(&ScreenWriter.current_color_code, BLACK);
+                        }
                         escape_sequence_position = 0;
 
                         return;
                 }
 
-                escape_sequence[escape_sequence_position] = (char) c;
                 escape_sequence_position += 1;
 
                 return;

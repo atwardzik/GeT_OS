@@ -30,8 +30,10 @@ typedef uint8_t ByteColorCode;
 
 constexpr uint8_t FOREGROUND_LIGHT_COLOR_BIT = 1 << 3;
 constexpr uint8_t BACKGROUND_LIGHT_COLOR_BIT = 1 << 7;
-constexpr uint8_t BACKGROUND_COLOR_BITS = 0x70;
-constexpr uint8_t FOREGROUND_COLOR_BITS = 0x07;
+constexpr uint8_t BACKGROUND_COLOR_ENCODING_BITS = 0x70;
+constexpr uint8_t FOREGROUND_COLOR_ENCODING_BITS = 0x07;
+constexpr uint8_t BACKGROUND_COLOR_BITS = 0xf0;
+constexpr uint8_t FOREGROUND_COLOR_BITS = 0x0f;
 
 static inline void set_foreground_color(ByteColorCode *color_code, const enum EscapeColor color) {
         *color_code &= BACKGROUND_COLOR_BITS;

@@ -58,9 +58,9 @@ static inline void uart_change_color(ByteColorCode color_code) {
 
         current_uart_color = color_code;
 
-        const uint8_t foreground_color_encoded = color_code & FOREGROUND_COLOR_BITS;
+        const uint8_t foreground_color_encoded = color_code & FOREGROUND_COLOR_ENCODING_BITS;
         const bool foreground_color_light = color_code & FOREGROUND_LIGHT_COLOR_BIT;
-        uint8_t background_color_encoded = (color_code & BACKGROUND_COLOR_BITS) >> 4;
+        uint8_t background_color_encoded = (color_code & BACKGROUND_COLOR_ENCODING_BITS) >> 4;
         const bool background_color_light = color_code & BACKGROUND_LIGHT_COLOR_BIT;
 
         if (background_color_encoded == BLACK) {
