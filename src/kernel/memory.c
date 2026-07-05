@@ -83,8 +83,8 @@ void *kmalloc(size_t size) {
                 chunk.ptr = (void *) previous_chunk->next_node + sizeof(struct Chunk);
         }
 
-        size_t heap_size_after_alloc = get_current_heap_size() + chunk.size + sizeof(struct Chunk);
-        if (heap_size_after_alloc >= (size_t) heap_end_ptr) {
+        const size_t heap_size_after_alloc = get_current_heap_size() + chunk.size + sizeof(struct Chunk);
+        if (heap_size_after_alloc >= (size_t) (heap_end_ptr - heap_start_ptr)) {
                 return nullptr;
         }
 

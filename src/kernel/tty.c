@@ -369,10 +369,10 @@ static void printk_status(enum StartupStatus status) {
                         printk("\r[        ] ");
                         break;
                 case STATUS_OK:
-                        printk("\r[   \x1b[92;40mOK\x1b[0m   ] ");
+                        printk("\r[   \x1b[92;49mOK\x1b[0m   ] ");
                         break;
                 case STATUS_FAILED:
-                        printk("\r[ \x1b[91;40mFAILED\x1b[0m ] ");
+                        printk("\r[ \x1b[91;49mFAILED\x1b[0m ] ");
                         break;
         }
 }

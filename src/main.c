@@ -14,45 +14,19 @@
 
 // DO NOT TRY TO CALL KERNEL FUNCTIONS FROM USER SPACE OTHER THAN SYSCALLS!!!
 
+#define LINES_MAX       39    /* screen height - 1 for command*/
+
 struct FileLine {
-        unsigned int line_number;
-        off_t file_offset;
-        char *line;
+        size_t file_offset;
+        bool edited; //if the line is edited, file_offset points to the bak file
 };
 
-/**
- * Appends offsets of next lines to the array of positions, starting at given index
- *
- * @param offsets array of offsets in given buffer
- * @param count last index in the array of offsets
- * @param positions_size size of the array of offsets
- * @param data data buffer
- * @param data_count size of the data buffer
- *
- * @return number of lines found in the given buffer
- */
-int append_line_offsets(
-        int *offsets, const int count, const size_t positions_size, const char *data, const size_t data_count
-) {
-        int endl_position = -1;
-        int current_position = 0;
-        int i = count;
+struct Screen {
+        unsigned int first_line_number;
+        char *lines[LINES_MAX];
+};
 
-        while (i < positions_size) {
-                endl_position = strcspn(data + current_position, "\n");
-                offsets[i] = current_position;
-
-                i += 1;
-                if (current_position + endl_position == data_count) {
-                        break;
-                }
-                current_position += endl_position + 1;
-        }
-
-        return i - count;
-}
-
-ssize_t readline(char **line_ptr, size_t *line_size, int fd) {
+ssize_t readline(int fd, char **line_ptr, size_t *line_size) {
         const int file_pos = lseek(fd, 0, SEEK_CUR);
         size_t buffer_size = 1;
 
@@ -74,13 +48,13 @@ ssize_t readline(char **line_ptr, size_t *line_size, int fd) {
 
                 const int bytes_read = read(fd, line + strlen(line), block_size);
                 if (!bytes_read) {
-                        break;
+                        break; //eof
                 }
                 if (bytes_read < block_size) {
                         eof = true;
                 }
 
-                line[buffer_size] = 0;
+                line[buffer_size - 1] = 0;
                 len = strlen(line);
 
                 newline = strchr(line, '\n');
@@ -90,13 +64,77 @@ ssize_t readline(char **line_ptr, size_t *line_size, int fd) {
                 return -1;
         }
         if (newline) {
-                len = newline - line;
+                len = newline - line + 1;
         }
-        line[len + 1] = 0;
+        line[len] = 0;
         *line_ptr = line;
         *line_size = buffer_size;
 
-        lseek(fd, file_pos + len + 1, SEEK_SET);
+        lseek(fd, file_pos + len, SEEK_SET);
+        return 0;
+}
+
+int index_file_lines(int fd, struct FileLine **lines, size_t *lines_size) {
+        lseek(fd, 0, SEEK_SET);
+        if (!*lines || *lines_size < 128 * sizeof(struct FileLine)) {
+                free(*lines);
+                *lines = malloc(128 * sizeof(struct FileLine));
+                if (!*lines) {
+                        return ENOMEM;
+                }
+                *lines_size = 128 * sizeof(struct FileLine);
+        }
+        char *buf = malloc(1025);
+        if (!buf) {
+                dprintf(2, "[!] Not enough memory.");
+                return ENOMEM;
+        }
+
+        (*lines)[0] = (struct FileLine){UINT16_MAX, false};
+
+        off_t file_offset = 0;
+        size_t bytes_read = 0;
+        size_t tail_len = 0;
+        int i = 1;
+        while ((bytes_read = read(fd, buf, 1024))) {
+                buf[1024] = 0;
+
+                size_t buf_position = 0;
+                size_t substr_len = 0;
+                while (buf_position < bytes_read) {
+                        if (i * sizeof(struct FileLine) > *lines_size - 1) {
+                                *lines_size += 128;
+                                struct FileLine *rlines = realloc(*lines, *lines_size);
+                                if (!rlines) {
+                                        return ENOMEM;
+                                }
+                                *lines = rlines;
+                        }
+                        if (!tail_len) {
+                                const size_t line_offset = file_offset + buf_position;
+                                (*lines)[i] = (struct FileLine){line_offset, false};
+                        }
+
+                        substr_len = strcspn(buf + buf_position, "\n");
+                        if (buf_position + substr_len == bytes_read) {
+                                tail_len = substr_len;
+                        }
+                        else {
+                                tail_len = 0;
+                                i += 1;
+                        }
+
+                        buf_position += substr_len + 1;
+                }
+
+                file_offset += bytes_read;
+        }
+        while (i * sizeof(struct FileLine) < *lines_size) {
+                (*lines)[i] = (struct FileLine){UINT16_MAX, false};
+                i += 1;
+        }
+
+        lseek(fd, 0, SEEK_SET);
         return 0;
 }
 
@@ -106,29 +144,53 @@ int vi(int argc, char **argv) {
         //         return 1;
         // }
 
-        const int fd = open("/mnt/disk0/index.htm", O_RDONLY, 0);
+        const int fd = open("/mnt/disk0/start.s", O_RDONLY, 0);
         if (fd < 0) {
                 dprintf(2, "[!] No such file.");
                 return 1;
         }
-        const size_t file_len = lseek(fd, 0, SEEK_END);
-        lseek(fd, 0, SEEK_SET);
+        struct FileLine *lines = nullptr;
+        size_t lines_size = 0;
+        if (index_file_lines(fd, &lines, &lines_size) == ENOMEM) {
+                if (!lines_size) {
+                        dprintf(2, "[!] Not enough memory.");
+                        return 1;
+                }
+                dprintf(2, "[!] The file is too long to index it's lines, so it is read-only.");
+        }
 
-        struct FileLine *screen = malloc(40 * sizeof(struct FileLine));
+
+        struct Screen *screen = malloc(sizeof(*screen));
         if (!screen) {
                 dprintf(2, "[!] Not enough memory.");
                 return 1;
         }
-        memset(screen, 0, 40 * sizeof(struct FileLine));
+        memset(screen, 0, sizeof(*screen));
 
-        for (int i = 0; i < 40; ++i) {
-                char *str = nullptr;
-                size_t len = 0;
-                if (readline(&str, &len, fd) == 0) {
-                        printf("%i | %s", i, str);
-                        free(str);
+        printf("\n");
+        for (int i = 1; i < LINES_MAX; ++i) {
+                char *line = nullptr;
+                size_t buflen = 0;
+                if (readline(fd, &line, &buflen) == 0) {
+                        char line_num[4] = {0x20, 0x20, 0x20, 0};
+                        snprintf(line_num, 4, "%i", i);
+                        printf("\x1b[90;49m%s\x1b[0m ", line_num);
+
+                        int len = strlen(line) - 1;
+                        len = len > 75 ? 75 : len;
+                        write(1, line, len);
+                        printf("\n");
+
+                        screen->lines[i] = line;
                 }
         }
+
+        for (int i = 0; i < LINES_MAX; ++i) {
+                free(screen->lines[i]);
+        }
+        free(screen);
+        free(lines);
+
         return 0;
 }
 
@@ -181,7 +243,7 @@ int load_initramfs(void) {
                 char next_bytes[10];
                 read(fd, next_bytes, 10);
                 if (memcmp(next_bytes, "TRAILER!!!", 10) == 0) {
-                        printf("\x1b[96;40m[!] Unpacking ended successfully.\x1b[0m\n");
+                        printf("\x1b[96;49m[!] Unpacking ended successfully.\x1b[0m\n");
                         break;
                 }
                 lseek(fd, current_offset, SEEK_SET);
@@ -254,36 +316,36 @@ void proc1(void) {
 }
 
 void PATER_ADAMVS_SIGINT(int signum) {
-        printf("\x1b[91;40mTrying to exit the init process is a bloody bad idea.\x1b[0m\n");
+        printf("\x1b[91;49mTrying to exit the init process is a bloody bad idea.\x1b[0m\n");
 }
 
 
 void PATER_ADAMVS(int argc, char *argv[]) {
         signal(SIGINT, PATER_ADAMVS_SIGINT);
         printf(
-                "\n\x1b[96;40m  PATER ADAMVS QUI EST IN PARADISO VOLVPTATIS SALVTAT SEQUENTES PROCESS FILIOS\x1b[0m\n\n");
+                "\n\x1b[96;49m  PATER ADAMVS QUI EST IN PARADISO VOLVPTATIS SALVTAT SEQUENTES PROCESS FILIOS\x1b[0m\n\n");
 
 
-        printf("\x1b[96;40m[!] Running process LED\x1b[0m\n");
+        printf("\x1b[96;49m[!] Running process LED\x1b[0m\n");
         [[maybe_unused]] const int proc1_pid = spawnp(proc1, nullptr, nullptr, nullptr, nullptr);
 
-        printf("\x1b[96;40m[!] Unpacking initramfs\x1b[0m\n");
+        printf("\x1b[96;49m[!] Unpacking initramfs\x1b[0m\n");
         load_initramfs();
 
-        printf("\x1b[96;40m[!] Mounting initramfs\x1b[0m\n");
+        printf("\x1b[96;49m[!] Mounting initramfs\x1b[0m\n");
         const int cd_code = chdir("initramfs");
         if (cd_code == -1) {
-                printf("\x1b[91;40m[!] No such file.\x1b[0m\n");
+                printf("\x1b[91;49m[!] No such file.\x1b[0m\n");
                 __asm__("bkpt   #0");
         }
 
         [[maybe_unused]] const int vi_pid = spawnp((void (*)(void)) vi, nullptr, nullptr, nullptr, nullptr);
 
         while (1) {
-                printf("\x1b[96;40m[!] Running shell (gsh)\x1b[0m\n");
+                printf("\x1b[96;49m[!] Running shell (gsh)\x1b[0m\n");
                 int fd = open("bin/gsh", O_BINARY, 0);
                 if (fd < 0) {
-                        printf("\x1b[91;40m[!] No shell found.\x1b[0m\n");
+                        printf("\x1b[91;49m[!] No shell found.\x1b[0m\n");
                         __asm__("bkpt   #0");
                 }
 
@@ -297,7 +359,7 @@ void PATER_ADAMVS(int argc, char *argv[]) {
                 if (returned_pid != shell_pid) {
                         goto process_wait; //implement waitpid syscall
                 }
-                printf("\n\x1b[96;40m[PATER ADAMVS]\x1b[0m Child process %i exited with code: %i\n",
+                printf("\n\x1b[96;49m[PATER ADAMVS]\x1b[0m Child process %i exited with code: %i\n",
                        returned_pid, code);
                 close(fd);
         }
@@ -307,7 +369,7 @@ int main(void) {
         reset_subsys();
         setup_internal_clk();
         init_tty();
-        printk("   --- \x1b[91;40mG\x1b[93;40me\x1b[92;40mT \x1b[94;40mO\x1b[95;40mS\x1b[0m Kernel startup ---\n\n");
+        printk("   --- \x1b[91;49mG\x1b[93;49me\x1b[92;49mT \x1b[94;49mO\x1b[95;49mS\x1b[0m Kernel startup ---\n\n");
         int res;
 
         init_pin_output(25);
