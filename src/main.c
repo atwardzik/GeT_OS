@@ -17,6 +17,25 @@
 #define LINES_MAX       39    /* screen height - 1 for command*/
 #define INVALID_LINE    SIZE_MAX
 
+static int line_number_field_length = 3;
+
+static inline void cmd_move_absolute(int x, int y) {
+        printf("\x1b[%i;%iH", x, y);
+}
+
+static inline void cmd_move_to_col(int x) {
+        printf("\x1b[%iG", x);
+}
+
+static inline void cmd_clear_screen(void) {
+        printf("\x1b[2J");
+}
+
+static inline void cmd_scroll_up(void) {
+        printf("\x1b[S");
+}
+
+
 struct FileLine {
         size_t file_offset;
         bool edited; //if the line is edited, file_offset points to the bak file
@@ -97,7 +116,6 @@ int index_file_lines(int fd, struct FileLine **lines, size_t *lines_size) {
         }
         char *buf = malloc(1025);
         if (!buf) {
-                dprintf(2, "[!] Not enough memory.\n");
                 return ENOMEM;
         }
 
@@ -164,12 +182,14 @@ char *fetch_line_at(struct Editor *editor, const unsigned int line_index) {
         return newline;
 }
 
-void scroll_down(struct Editor *editor) {
+void scroll_up(struct Editor *editor) {
         int i = 1;
         while (i < LINES_MAX - 1) {
                 editor->screen->lines[i] = editor->screen->lines[i + 1];
                 i += 1;
         }
+
+        cmd_scroll_up();
 }
 
 void print_line_at(const char *line, const unsigned int index) {
@@ -177,29 +197,54 @@ void print_line_at(const char *line, const unsigned int index) {
                 return;
         }
 
-        char line_num[4] = {0x20, 0x20, 0x20, 0};
-        snprintf(line_num, 4, "%i", index);
-        printf("\x1b[90;49m%s\x1b[0m ", line_num);
+        char line_num[10] = {}; //low chances the files opened will have 9 digit lines
+        cmd_move_to_col(1);
+        const int line_num_length = snprintf(line_num, 10, "%i", index);
+        printf("\x1b[90;49m%s\x1b[0m", line_num);
+        if (line_num_length + 1 > line_number_field_length) {
+                line_number_field_length = line_num_length + 1;
+        }
+        for (int i = line_num_length; i < line_number_field_length; ++i) {
+                printf(" ");
+        }
 
         int len = strlen(line) - 1;
-        len = len > 75 ? 75 : len;
+        len = len > 79 - line_number_field_length ? 79 - line_number_field_length : len;
         write(1, line, len);
 
         printf("\n");
 }
 
+void jump_last_text_line(const struct Editor *editor) {
+        int last_line_number = editor->screen->first_line_number + LINES_MAX;
+        int column_offset = 1;
+        while (last_line_number) {
+                column_offset += 1;
+                last_line_number /= 10;
+        }
+        column_offset += 1;
+
+        cmd_move_absolute(LINES_MAX, column_offset);
+}
+
 void print_screen_at(const struct Editor *editor, const unsigned int start_line_index) {
         lseek(editor->fd, editor->lines[start_line_index].file_offset, SEEK_SET);
 
+        cmd_clear_screen();
+
         for (int i = 0; i < LINES_MAX; ++i) {
+                const int fd = editor->lines[start_line_index + i].edited ? editor->fdbak : editor->fd;
+
                 char *line = nullptr;
                 size_t buflen = 0;
-                if (readline(editor->fd, &line, &buflen) == 0) {
+                if (readline(fd, &line, &buflen) == 0) {
                         print_line_at(line, start_line_index + i);
 
                         editor->screen->lines[i] = line;
                 }
         }
+
+        jump_last_text_line(editor);
 }
 
 int vi(int argc, char **argv) {
@@ -248,7 +293,8 @@ int vi(int argc, char **argv) {
         editor->fd = fd;
         editor->fdbak = -1;
 
-        printf("\n");
+        cmd_clear_screen();
+        printf("\x1b[1;40r"); //set scrollable contents
         print_screen_at(editor, 1);
 
         bool echo = false, canonical = false;
@@ -259,27 +305,44 @@ int vi(int argc, char **argv) {
                 switch (c) {
                         case 'j': {
                                 char *line = fetch_line_at(editor, editor->screen->first_line_number + LINES_MAX);
-                                editor->screen->first_line_number += 1;
                                 free(editor->screen->lines[0]);
-                                scroll_down(editor);
+                                scroll_up(editor);
                                 if (line) {
                                         editor->screen->lines[LINES_MAX - 1] = line;
                                 }
                                 line = line ? line : "\n";
-                                print_line_at(line, editor->screen->first_line_number + LINES_MAX - 1);
+
+                                print_line_at(line, editor->screen->first_line_number + LINES_MAX);
+
+                                editor->screen->first_line_number += 1;
+                                jump_last_text_line(editor);
                         }
                         break;
                         case 'k': {
-                                // char *line = fetch_line_at(editor, editor->screen->first_line_number - 1);
-                                // editor->screen->first_line_number -= 1;
-                                // free(editor->screen->lines[LINES_MAX - 1]);
+                                char *line = fetch_line_at(editor, editor->screen->first_line_number - 1);
+                                editor->screen->first_line_number -= 1;
+                                free(editor->screen->lines[LINES_MAX - 1]);
                                 // scroll_up(editor);
-                                // if (line) {
-                                        // editor->screen->lines[0] = line;
-                                // }
-                                // line = line ? line : "\n";
-                                // print_line_at(line, editor->screen->first_line_number);
+                                if (line) {
+                                        editor->screen->lines[0] = line;
+                                }
+                                line = line ? line : "\n";
+                                print_line_at(line, editor->screen->first_line_number);
                         }
+                        break;
+                        case 'H':
+                                printf("\x1b[H");
+                                //move to proper offset
+                                break;
+                        case 'M':
+                                printf("\x1b[%iH", (LINES_MAX - 1) / 2);
+                                break;
+                        case 'L':
+                                jump_last_text_line(editor);
+                                break;
+                        case ':':
+                                printf("\x1b[%iH", LINES_MAX + 1);
+                                printf(":");
                                 break;
                         default:
                                 break;
@@ -444,6 +507,7 @@ void PATER_ADAMVS(int argc, char *argv[]) {
         [[maybe_unused]] const int vi_pid = spawnp((void (*)(void)) vi, nullptr, nullptr, nullptr, nullptr);
 
         while (1) {
+#if 0
                 printf("\x1b[96;49m[!] Running shell (gsh)\x1b[0m\n");
                 int fd = open("bin/gsh", O_BINARY, 0);
                 if (fd < 0) {
@@ -464,6 +528,7 @@ void PATER_ADAMVS(int argc, char *argv[]) {
                 printf("\n\x1b[96;49m[PATER ADAMVS]\x1b[0m Child process %i exited with code: %i\n",
                        returned_pid, code);
                 close(fd);
+#endif
         }
 }
 

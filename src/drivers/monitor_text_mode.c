@@ -214,9 +214,46 @@ static void set_color(const param_t *fg, const param_t *bg) {
         }
 }
 
-static void move_cursor(uint8_t *escape_sequence) {
-        if (escape_sequence[1] != '[') {
-                return;
+static void move_cursor(const int row, const int col) {
+        vga_clr_cursor();
+
+        ScreenWriter.current_row_position = row;
+        ScreenWriter.current_column_position = col;
+
+        vga_update_cursor_position(ScreenWriter.current_row_position, ScreenWriter.current_column_position);
+}
+
+static void move_cursor_absolute(param_t *left, param_t *right) {
+        if (!left->present) {
+                *left = (param_t){true, 1};
+        }
+        if (!right->present) {
+                *right = (param_t){true, 1};
+        }
+
+        move_cursor(left->val - 1, right->val - 1);
+}
+
+void parse_arguments(const int c, const uint8_t *escape_sequence, param_t *left, param_t *right) {
+        const char action[2] = {(char) c, 0};
+        const int param_splitter = strcspn(escape_sequence, ";");
+        const int action_code = strcspn(escape_sequence, action);
+
+        left->present = false;
+        right->present = false;
+        char param_left_str[4] = {};
+        char param_right_str[4] = {};
+        if (escape_sequence[param_splitter + 1] != '\0') {
+                memcpy(param_left_str, escape_sequence + 2, param_splitter - 2);
+                memcpy(param_right_str, escape_sequence + param_splitter + 1, action_code - (param_splitter + 1));
+
+                *left = (param_t){true, strtoul(param_left_str, nullptr, 10)};
+                *right = (param_t){true, strtoul(param_right_str, nullptr, 10)};
+        }
+        else if (action_code > 2) {
+                memcpy(param_left_str, escape_sequence + 2, action_code - 2);
+
+                *left = (param_t){true, strtoul(param_left_str, nullptr, 10)};
         }
 }
 
@@ -232,34 +269,20 @@ int handle_escape_sequence(uint8_t *escape_sequence, size_t *escape_sequence_pos
                 return 0;
         }
 
-
-        const char action[2] = {(char) c, 0};
-        const int param_splitter = strcspn(escape_sequence, ";");
-        const int action_code = strcspn(escape_sequence, action);
-
-        param_t left = {false};
-        param_t right = {false};
-        char param_left_str[4] = {};
-        char param_right_str[4] = {};
-        if (escape_sequence[param_splitter + 1] != '\0') {
-                memcpy(param_left_str, escape_sequence + 2, param_splitter - 2);
-                memcpy(param_right_str, escape_sequence + param_splitter + 1, action_code - (param_splitter + 1));
-
-                left = (param_t){true, strtoul(param_left_str, nullptr, 10)};
-                right = (param_t){true, strtoul(param_right_str, nullptr, 10)};
-        }
-        else if (action_code > 2) {
-                memcpy(param_left_str, escape_sequence + 2, action_code - 2);
-
-                left = (param_t){true, strtoul(param_left_str, nullptr, 10)};
-        }
-
+        param_t left, right;
+        parse_arguments(c, escape_sequence, &left, &right);
 
         if (c == 'm') {
                 set_color(&left, &right);
         }
         else if (c == 'H') {
-                move_cursor(escape_sequence);
+                move_cursor_absolute(&left, &right);
+        }
+        else if (c == 'S') {
+                scroll_vertical();
+        }
+        else if (c == 'G' && left.present) {
+                move_cursor(ScreenWriter.current_row_position, left.val - 1);
         }
 
         *escape_sequence_position = 0;
