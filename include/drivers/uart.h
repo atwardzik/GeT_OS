@@ -9,8 +9,6 @@
 #include "libc.h"
 #include "types.h"
 
-constexpr uint32_t UART_DCH = 0x1b5b50; // ESC[P
-constexpr uint32_t UART_ICH = 0x1b5b40; // ESC[@
 
 void uart_init(void);
 
@@ -58,9 +56,9 @@ static inline void uart_change_color(ByteColorCode color_code) {
 
         current_uart_color = color_code;
 
-        const uint8_t foreground_color_encoded = color_code & FOREGROUND_COLOR_ENCODING_BITS;
+        const uint8_t foreground_color_encoded = color_code & FOREGROUND_COLOR_BITS;
         const bool foreground_color_light = color_code & FOREGROUND_LIGHT_COLOR_BIT;
-        uint8_t background_color_encoded = (color_code & BACKGROUND_COLOR_ENCODING_BITS) >> 4;
+        uint8_t background_color_encoded = (color_code & BACKGROUND_COLOR_BITS) >> 4;
         const bool background_color_light = color_code & BACKGROUND_LIGHT_COLOR_BIT;
 
         if (background_color_encoded == BLACK) {

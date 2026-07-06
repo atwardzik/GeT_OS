@@ -7,23 +7,28 @@
 
 #include <stdint.h>
 
-constexpr uint8_t EOL = 0x00;
-constexpr uint8_t ETX = 0x03;
-constexpr uint8_t EOT = 0x04;
+enum TerminalSpecial {
+        EOL             = 0x00,
+        ETX             = 0x03,
+        EOT             = 0x04,
+        BEL             = 0x07,
+        BACKSPACE       = 0x08,
+        HT              = 0x09,
+        ENDL            = 0x0a,
+        VT              = 0x0b,
+        FF              = 0x0c,
+        CARRIAGE_RETURN = 0x0d,
+        ESC             = 0x1b,
+        EMPTY_SPACE     = 0x20,
 
-constexpr uint8_t BEL = 0x07;
-constexpr uint8_t BACKSPACE = 0x08;
-constexpr uint8_t HT = 0x09;
-constexpr uint8_t ENDL = 0x0A;
-constexpr uint8_t VT = 0x0B;
-constexpr uint8_t FF = 0x0C;
-constexpr uint8_t CARRIAGE_RETURN = 0x0D;
-constexpr uint8_t ESC = 0x1b;
-constexpr uint8_t EMPTY_SPACE = 0x20;
-
-constexpr uint32_t ARROW_LEFT = 0x1b5b44;
-constexpr uint32_t ARROW_RIGHT = 0x1b5b43;
-constexpr uint32_t ARROW_UP = 0x1b5b41;
-constexpr uint32_t ARROW_DOWN = 0x1b5b42;
+        ICH         = 0x1b5b40, // ESC[@
+        ARROW_UP    = 0x1b5b41, // ESC[A
+        ARROW_DOWN  = 0x1b5b42, // ESC[B
+        ARROW_RIGHT = 0x1b5b43, // ESC[C
+        ARROW_LEFT  = 0x1b5b44, // ESC[D
+        END         = 0x1b5b46, // ESC[F
+        HOME        = 0x1b5b48, // ESC[H
+        DCH         = 0x1b5b50, // ESC[P
+};
 
 #endif //OS_ASCII_CHAR_CODES_H

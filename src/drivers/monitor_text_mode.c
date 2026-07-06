@@ -178,36 +178,102 @@ static void write_with_line_overflow_if_needed(const char c) {
         }
 }
 
+typedef struct {
+        bool present;
+        int val;
+} param_t;
+
+static void set_color(const param_t *fg, const param_t *bg) {
+        if (!fg->present) {
+                return;
+        }
+
+        if (fg->val == 0) {
+                set_background_color(&ScreenWriter.current_color_code, BLACK, false);
+                set_foreground_color(&ScreenWriter.current_color_code, WHITE, false);
+
+                return;
+        }
+
+        const bool fg_light = fg->val >= 90 ? true : false;
+        if (bg->present) {
+                const bool bg_light = bg->val >= 100 ? true : false;
+
+                set_foreground_color(&ScreenWriter.current_color_code, fg->val % 10, fg_light);
+                set_background_color(&ScreenWriter.current_color_code, bg->val % 10, bg_light);
+        }
+        else {
+                set_foreground_color(&ScreenWriter.current_color_code, fg->val % 10, fg_light);
+        }
+
+        if (fg->val == 39) {
+                set_foreground_color(&ScreenWriter.current_color_code, WHITE, false);
+        }
+        if (bg->present && bg->val == 49) {
+                set_background_color(&ScreenWriter.current_color_code, BLACK, false);
+        }
+}
+
+static void move_cursor(uint8_t *escape_sequence) {
+        if (escape_sequence[1] != '[') {
+                return;
+        }
+}
+
+int handle_escape_sequence(uint8_t *escape_sequence, size_t *escape_sequence_position, const int c) {
+        if (*escape_sequence_position == 10) {
+                *escape_sequence_position = 0;
+                return 1;
+        }
+
+        escape_sequence[*escape_sequence_position] = (char) c;
+        if (!isalpha(c)) {
+                *escape_sequence_position += 1;
+                return 0;
+        }
+
+
+        const char action[2] = {(char) c, 0};
+        const int param_splitter = strcspn(escape_sequence, ";");
+        const int action_code = strcspn(escape_sequence, action);
+
+        param_t left = {false};
+        param_t right = {false};
+        char param_left_str[4] = {};
+        char param_right_str[4] = {};
+        if (escape_sequence[param_splitter + 1] != '\0') {
+                memcpy(param_left_str, escape_sequence + 2, param_splitter - 2);
+                memcpy(param_right_str, escape_sequence + param_splitter + 1, action_code - (param_splitter + 1));
+
+                left = (param_t){true, strtoul(param_left_str, nullptr, 10)};
+                right = (param_t){true, strtoul(param_right_str, nullptr, 10)};
+        }
+        else if (action_code > 2) {
+                memcpy(param_left_str, escape_sequence + 2, action_code - 2);
+
+                left = (param_t){true, strtoul(param_left_str, nullptr, 10)};
+        }
+
+
+        if (c == 'm') {
+                set_color(&left, &right);
+        }
+        else if (c == 'H') {
+                move_cursor(escape_sequence);
+        }
+
+        *escape_sequence_position = 0;
+        memset(escape_sequence, 0, 10);
+
+        return 0;
+}
 
 void monitor_tm_write_byte(const int c) {
         static uint8_t escape_sequence[10] = {};
         static size_t escape_sequence_position = 0;
 
         if (escape_sequence_position || c == ESC) {
-                escape_sequence[escape_sequence_position] = (char) c;
-                if (c == 'm') {
-                        if (memcmp(escape_sequence, "\x1b[0m", 4) == 0) { //
-                                set_background_color(&ScreenWriter.current_color_code, BLACK);
-                                set_foreground_color(&ScreenWriter.current_color_code, WHITE);
-                                escape_sequence_position = 0;
-
-                                return;
-                        }
-
-                        ScreenWriter.current_color_code = decode_escape_colors(escape_sequence);
-                        if (memcmp(&escape_sequence[2], "39", 2) == 0) {
-                                set_foreground_color(&ScreenWriter.current_color_code, WHITE);
-                        }
-                        if (memcmp(&escape_sequence[5], "49", 2) == 0) {
-                                set_background_color(&ScreenWriter.current_color_code, BLACK);
-                        }
-                        escape_sequence_position = 0;
-
-                        return;
-                }
-
-                escape_sequence_position += 1;
-
+                handle_escape_sequence(escape_sequence, &escape_sequence_position, c);
                 return;
         }
 

@@ -232,6 +232,14 @@ static inline char tolower(const char c) {
         return c;
 }
 
+static inline bool isalpha(const int c) {
+        if ((c >= 65 && c <= 90) || (c >= 97 && c <= 122)) {
+                return true;
+        }
+
+        return false;
+}
+
 
 /*
  * memory
