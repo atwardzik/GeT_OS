@@ -25,6 +25,7 @@ add_subdirectory(src/drivers)
 add_subdirectory(src/kernel)
 add_subdirectory(src/fs)
 add_subdirectory(src/kstdlib)
+add_subdirectory(src/userspaceVi) # TEMPORARILY FOR DEVELOPMENT
 
 add_executable(os
         src/start.S
@@ -33,6 +34,7 @@ add_executable(os
         $<TARGET_OBJECTS:drivers>
         $<TARGET_OBJECTS:kernel>
         $<TARGET_OBJECTS:fs>
+        $<TARGET_OBJECTS:vi>
         $<TARGET_OBJECTS:klibc>
         src/archive_loader.S # PUT THIS ARCHIVE LOADER ALWAYS AT THE END (raw files copied)!!!
 )

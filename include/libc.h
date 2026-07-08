@@ -284,4 +284,13 @@ uint16_t htons(uint16_t hostshort);
 
 int inet_aton(const char *host_address, struct in_addr *inp);
 
+
+/*
+ * Misc
+ */
+
+static inline unsigned int abs(const int x) {
+        return x >= 0 ? x : -x;
+}
+
 #endif // LIBC_H

@@ -11,9 +11,11 @@
 #include "kernel/network.h"
 #include "kernel/proc.h"
 #include "kernel/resets.h"
+#include "userspaceVi/visual_editor.h"
 
 // DO NOT TRY TO CALL KERNEL FUNCTIONS FROM USER SPACE OTHER THAN SYSCALLS!!!
 
+#if 0
 #define LINES_MAX       39    /* screen height - 1 for command*/
 #define INVALID_LINE    SIZE_MAX
 
@@ -35,6 +37,10 @@ static inline void cmd_scroll_up(void) {
         printf("\x1b[S");
 }
 
+static inline void cmd_scroll_down(void) {
+        printf("\x1b[T");
+}
+
 
 struct FileLine {
         size_t file_offset;
@@ -43,7 +49,8 @@ struct FileLine {
 
 struct Screen {
         unsigned int first_line_number;
-        char *lines[LINES_MAX];
+        unsigned int current_line_number;
+        char *lines[LINES_MAX + 2]; //indexing from 1
 };
 
 struct Editor {
@@ -104,15 +111,15 @@ ssize_t readline(int fd, char **line_ptr, size_t *line_size) {
         return 0;
 }
 
-int index_file_lines(int fd, struct FileLine **lines, size_t *lines_size) {
+int index_file_lines(int fd, struct FileLine **lines, size_t *lines_cap) {
         lseek(fd, 0, SEEK_SET);
-        if (!*lines || *lines_size < 128 * sizeof(struct FileLine)) {
+        if (!*lines || *lines_cap < 128 * sizeof(struct FileLine)) {
                 free(*lines);
                 *lines = malloc(128 * sizeof(struct FileLine));
                 if (!*lines) {
                         return ENOMEM;
                 }
-                *lines_size = 128 * sizeof(struct FileLine);
+                *lines_cap = 128 * sizeof(struct FileLine);
         }
         char *buf = malloc(1025);
         if (!buf) {
@@ -131,9 +138,9 @@ int index_file_lines(int fd, struct FileLine **lines, size_t *lines_size) {
                 size_t buf_position = 0;
                 size_t substr_len = 0;
                 while (buf_position < bytes_read) {
-                        if (i * sizeof(struct FileLine) > *lines_size - 1) {
-                                *lines_size += 128;
-                                struct FileLine *rlines = realloc(*lines, *lines_size);
+                        if (i * sizeof(struct FileLine) > *lines_cap - 1) {
+                                *lines_cap += 128;
+                                struct FileLine *rlines = realloc(*lines, *lines_cap);
                                 if (!rlines) {
                                         return ENOMEM;
                                 }
@@ -158,7 +165,7 @@ int index_file_lines(int fd, struct FileLine **lines, size_t *lines_size) {
 
                 file_offset += bytes_read;
         }
-        while (i * sizeof(struct FileLine) < *lines_size) {
+        while (i * sizeof(struct FileLine) < *lines_cap) {
                 (*lines)[i] = (struct FileLine){INVALID_LINE, false};
                 i += 1;
         }
@@ -192,10 +199,18 @@ void scroll_up(struct Editor *editor) {
         cmd_scroll_up();
 }
 
-void print_line_at(const char *line, const unsigned int index) {
-        if (!strlen(line)) {
-                return;
+void scroll_down(struct Editor *editor) {
+        int i = LINES_MAX - 1;
+        while (i > 1) {
+                editor->screen->lines[i] = editor->screen->lines[i - 1];
+                i -= 1;
         }
+
+        cmd_scroll_down();
+}
+
+void print_current_line_number(const struct Editor *editor) {
+        const unsigned int index = editor->screen->current_line_number;
 
         char line_num[10] = {}; //low chances the files opened will have 9 digit lines
         cmd_move_to_col(1);
@@ -207,6 +222,13 @@ void print_line_at(const char *line, const unsigned int index) {
         for (int i = line_num_length; i < line_number_field_length; ++i) {
                 printf(" ");
         }
+}
+
+void print_current_line(const struct Editor *editor) {
+        const char *line = editor->screen->lines[editor->screen->current_line_number];
+        if (!line || !strlen(line)) {
+                return;
+        }
 
         int len = strlen(line) - 1;
         len = len > 79 - line_number_field_length ? 79 - line_number_field_length : len;
@@ -215,34 +237,60 @@ void print_line_at(const char *line, const unsigned int index) {
         printf("\n");
 }
 
-void jump_last_text_line(const struct Editor *editor) {
-        int last_line_number = editor->screen->first_line_number + LINES_MAX;
+static inline int determine_offset(int line_number) {
         int column_offset = 1;
-        while (last_line_number) {
+        while (line_number) {
                 column_offset += 1;
-                last_line_number /= 10;
+                line_number /= 10;
         }
         column_offset += 1;
+
+        return column_offset;
+}
+
+void jump_column_line_offset(const struct Editor *editor) {
+        const int last_line_number = editor->screen->first_line_number + LINES_MAX;
+        const int column_offset = determine_offset(last_line_number);
+
+        cmd_move_to_col(column_offset);
+}
+
+void jump_first_text_line(const struct Editor *editor) {
+        const int first_line_number = editor->screen->first_line_number;
+        const int column_offset = determine_offset(first_line_number);
+
+        cmd_move_absolute(1, column_offset);
+}
+
+void jump_last_text_line(const struct Editor *editor) {
+        const int last_line_number = editor->screen->first_line_number + LINES_MAX;
+        const int column_offset = determine_offset(last_line_number);
 
         cmd_move_absolute(LINES_MAX, column_offset);
 }
 
-void print_screen_at(const struct Editor *editor, const unsigned int start_line_index) {
-        lseek(editor->fd, editor->lines[start_line_index].file_offset, SEEK_SET);
+void print_screen_at(const struct Editor *editor, const unsigned int start_line_number) {
+        lseek(editor->fd, editor->lines[start_line_number].file_offset, SEEK_SET);
 
         cmd_clear_screen();
 
+        editor->screen->first_line_number = start_line_number;
         for (int i = 0; i < LINES_MAX; ++i) {
-                const int fd = editor->lines[start_line_index + i].edited ? editor->fdbak : editor->fd;
+                const int fd = editor->lines[start_line_number + i].edited ? editor->fdbak : editor->fd;
 
                 char *line = nullptr;
                 size_t buflen = 0;
                 if (readline(fd, &line, &buflen) == 0) {
-                        print_line_at(line, start_line_index + i);
+                        free(editor->screen->lines[i + 1]);
 
-                        editor->screen->lines[i] = line;
+                        editor->screen->lines[i + 1] = line;
+                        editor->screen->current_line_number = i + 1;
+
+                        print_current_line_number(editor);
+                        print_current_line(editor);
                 }
         }
+
 
         jump_last_text_line(editor);
 }
@@ -280,6 +328,7 @@ int vi(int argc, char **argv) {
         }
         memset(screen, 0, sizeof(*screen));
         screen->first_line_number = 1;
+        screen->current_line_number = 1;
 
         struct Editor *editor = malloc(sizeof(*editor));
         if (!editor) {
@@ -305,37 +354,46 @@ int vi(int argc, char **argv) {
                 switch (c) {
                         case 'j': {
                                 char *line = fetch_line_at(editor, editor->screen->first_line_number + LINES_MAX);
-                                free(editor->screen->lines[0]);
+                                free(editor->screen->lines[1]);
                                 scroll_up(editor);
                                 if (line) {
-                                        editor->screen->lines[LINES_MAX - 1] = line;
+                                        editor->screen->lines[LINES_MAX] = line;
                                 }
                                 line = line ? line : "\n";
 
-                                print_line_at(line, editor->screen->first_line_number + LINES_MAX);
+                                jump_last_text_line(editor);
+                                print_current_line_number(editor);
+                                print_current_line(editor);
 
                                 editor->screen->first_line_number += 1;
                                 jump_last_text_line(editor);
                         }
                         break;
                         case 'k': {
+                                if (editor->screen->first_line_number - 1 <= 0) {
+                                        break;
+                                }
                                 char *line = fetch_line_at(editor, editor->screen->first_line_number - 1);
                                 editor->screen->first_line_number -= 1;
-                                free(editor->screen->lines[LINES_MAX - 1]);
-                                // scroll_up(editor);
+                                free(editor->screen->lines[LINES_MAX]);
+                                scroll_down(editor);
                                 if (line) {
-                                        editor->screen->lines[0] = line;
+                                        editor->screen->lines[1] = line;
                                 }
                                 line = line ? line : "\n";
-                                print_line_at(line, editor->screen->first_line_number);
+
+                                jump_first_text_line(editor);
+                                print_current_line_number(editor);
+                                print_current_line(editor);
+                                jump_column_line_offset(editor); //current col?
                         }
                         break;
                         case 'H':
-                                printf("\x1b[H");
-                                //move to proper offset
+                                jump_first_text_line(editor);
                                 break;
                         case 'M':
                                 printf("\x1b[%iH", (LINES_MAX - 1) / 2);
+                                jump_column_line_offset(editor);
                                 break;
                         case 'L':
                                 jump_last_text_line(editor);
@@ -358,6 +416,7 @@ int vi(int argc, char **argv) {
 
         return ret;
 }
+#endif
 
 struct cpio_newc_header {
         char c_magic[6];
@@ -504,7 +563,8 @@ void PATER_ADAMVS(int argc, char *argv[]) {
                 __asm__("bkpt   #0");
         }
 
-        [[maybe_unused]] const int vi_pid = spawnp((void (*)(void)) vi, nullptr, nullptr, nullptr, nullptr);
+        char *params[] = {"vi", "/mnt/disk0/start.s"};
+        [[maybe_unused]] const int vi_pid = spawnp((void (*)(void)) run_editor, nullptr, nullptr, params, nullptr);
 
         while (1) {
 #if 0

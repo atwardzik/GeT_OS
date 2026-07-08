@@ -43,7 +43,7 @@ static void write_byte(int c) {
         if (kconf->io_dev.uart.enabled) {
                 if (c == BACKSPACE) {
                         uart_putc(ARROW_LEFT);
-                        uart_putc(UART_DCH);
+                        uart_putc(DCH);
                 }
                 else {
                         uart_putc(c);
@@ -57,7 +57,7 @@ static void insert_byte(int c) {
         }
 
         if (kconf->io_dev.uart.enabled) {
-                uart_putc(UART_ICH);
+                uart_putc(ICH);
                 uart_putc(c);
         }
 }
@@ -215,7 +215,7 @@ void write_to_keyboard_buffer(int c) {
 wake_up_if_applicable:
         character_present = true;
         if (!tty_canonical_mode || (tty_canonical_mode && newline_present)) {
-                wake_up_interruptible(&keyboard_device_file_stream->read_wait);
+                wake_up_interruptible(&keyboard_device_file_stream->read_wait); //FIXME: not this proceess!!
         }
 }
 
@@ -246,10 +246,6 @@ static bool tty_is_ready() {
 
 static ssize_t tty_read(struct File *, void *buf, const size_t count, off_t file_offset) {
         const struct Process *process = scheduler_get_current_process();
-        if (process->pgid != keyboard_device_file_stream->fg_pgid) {
-                return -1; //not in fg process group
-        }
-
         wait_event_interruptible(&keyboard_device_file_stream->read_wait, tty_is_ready);
 
         const int stream_size = get_written_characters_count();
