@@ -100,7 +100,7 @@ static struct VFS_Inode *create_file(struct VFS_Inode *parent, const char *name,
         return file.inode;
 }
 
-static int get_file_descriptor(struct VFS_Inode *inode) {
+static int get_file_descriptor(struct VFS_Inode *inode, int flags) {
         struct Process *current_process = scheduler_get_current_process();
         if (current_process->files.count >= MAX_OPEN_FILE_DESCRIPTORS) {
                 printk("[!] Too much files opened.\n");
@@ -120,6 +120,7 @@ static int get_file_descriptor(struct VFS_Inode *inode) {
         found_file->f_inode = inode;
         found_file->f_pos = 0;
         found_file->f_owner = current_process->pid;
+        found_file->f_flags = flags;
 
         for (size_t i = 0; i < MAX_OPEN_FILE_DESCRIPTORS; ++i) {
                 if (current_process->files.fdtable[i] == nullptr) {
@@ -186,7 +187,7 @@ int sys_open(const char *name, int flags, int mode) {
                 return -1;
         }
         if (file) {
-                const int fd = get_file_descriptor(file);
+                const int fd = get_file_descriptor(file, flags);
 
                 if (fd < 0) {
                         return fd;
