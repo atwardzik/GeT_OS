@@ -112,7 +112,7 @@ static void tty_echo(int c) {
         write_byte(c);
 }
 
-static void handle_special_character(int c) {
+static void handle_ascii_control_character(int c) {
         if (c == ETX) {
                 tty_echo('^');
                 tty_echo('C');
@@ -139,7 +139,10 @@ static void handle_special_character(int c) {
                         tty_echo(c);
                 }
         }
-        else if (c == ARROW_LEFT) {
+}
+
+static void handle_ansi_escape_sequence(int c) {
+        if (c == ARROW_LEFT) {
                 if (keyboard_buffer_current_position) {
                         keyboard_buffer_current_position -= 1;
                         tty_echo(c);
@@ -156,6 +159,18 @@ static void handle_special_character(int c) {
                         tty_echo(c);
                 }
         }
+}
+
+static void handle_newline_character(void) {
+        keyboard_device_file_stream->buffer[keyboard_buffer_final_length - 1] = ENDL;
+
+        while (keyboard_buffer_current_position < keyboard_buffer_final_length) {
+                keyboard_buffer_current_position += 1;
+                tty_echo(ARROW_RIGHT);
+        }
+        tty_echo(ENDL);
+
+        newline_present = true;
 }
 
 void write_to_keyboard_buffer(int c) {
@@ -176,8 +191,13 @@ void write_to_keyboard_buffer(int c) {
                 }
         }
 
-        if (c == ETX || c == BACKSPACE || c == ARROW_LEFT || c == ARROW_RIGHT || c == ARROW_UP || c == ARROW_DOWN) {
-                handle_special_character(c);
+        if (c == ETX || c == BACKSPACE) {
+                handle_ascii_control_character(c);
+                goto wake_up_if_applicable;
+        }
+
+        if (c == ARROW_LEFT || c == ARROW_RIGHT || c == ARROW_UP || c == ARROW_DOWN) {
+                handle_ansi_escape_sequence(c);
                 goto wake_up_if_applicable;
         }
 
@@ -186,31 +206,15 @@ void write_to_keyboard_buffer(int c) {
         keyboard_buffer_final_length += 1;
         keyboard_buffer_current_position += 1;
         if (c == ENDL) {
-                *(keyboard_device_file_stream->buffer + keyboard_buffer_final_length - 1) = ENDL;
-
-                while (keyboard_buffer_current_position < keyboard_buffer_final_length) {
-                        keyboard_buffer_current_position += 1;
-                        tty_echo(ARROW_RIGHT);
-                }
-                tty_echo(ENDL);
-
-                newline_present = true;
+                handle_newline_character();
                 goto wake_up_if_applicable;
         }
 
-        if (keyboard_buffer_current_position < keyboard_buffer_final_length) {
-                insert_and_shift(c, keyboard_buffer_current_position - 1, keyboard_buffer_final_length);
+        insert_and_shift(c, keyboard_buffer_current_position - 1, keyboard_buffer_final_length);
 
-                if (tty_echo_on) {
-                        insert_byte(c);
-                }
-
-                goto wake_up_if_applicable;
+        if (tty_echo_on) {
+                insert_byte(c);
         }
-
-        *(keyboard_device_file_stream->buffer + keyboard_buffer_current_position - 1) = (char) c;
-        tty_echo(c);
-
 
 wake_up_if_applicable:
         character_present = true;
