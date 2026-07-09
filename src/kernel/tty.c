@@ -81,14 +81,14 @@ static bool newline_present = false;
 
 static void insert_and_shift(const char c, const int pos_insert, const int len) {
         int temp = pos_insert;
-        char next_char = *(keyboard_device_file_stream->buffer + temp);
-        *(keyboard_device_file_stream->buffer + temp) = c;
+        char next_char = keyboard_device_file_stream->buffer[temp];
+        keyboard_device_file_stream->buffer[temp] = c;
 
         temp += 1;
         while (temp < len) {
                 const char current_char = next_char;
-                next_char = *(keyboard_device_file_stream->buffer + temp);
-                *(keyboard_device_file_stream->buffer + temp) = current_char;
+                next_char = keyboard_device_file_stream->buffer[temp];
+                keyboard_device_file_stream->buffer[temp] = current_char;
 
                 temp += 1;
         }
@@ -98,7 +98,7 @@ static void delete_and_shift(const int pos_delete, const int len) {
         int temp = pos_delete;
 
         while (temp < len) {
-                *(keyboard_device_file_stream->buffer + temp) = *(keyboard_device_file_stream->buffer + temp + 1);
+                keyboard_device_file_stream->buffer[temp] = keyboard_device_file_stream->buffer[temp + 1];
 
                 temp += 1;
         }
@@ -112,32 +112,62 @@ static void tty_echo(int c) {
         write_byte(c);
 }
 
+static void handle_etx_character(void) {
+        tty_echo('^');
+        tty_echo('C');
+
+        struct Process *process = nullptr;
+        const struct Process *wq_top = top_from_wait_queue(&keyboard_device_file_stream->read_wait);
+        if (wq_top && wq_top->pgid == keyboard_device_file_stream->fg_pgid) {
+                process = pop_from_wait_queue(&keyboard_device_file_stream->read_wait);
+        }
+        else {
+                process = scheduler_get_current_process();
+        }
+
+        if (process && process->pgid == keyboard_device_file_stream->fg_pgid) {
+                signal_notify(process, SIGINT);
+        }
+}
+
+static void handle_backspace_character(void) {
+        if (keyboard_buffer_current_position) {
+                keyboard_buffer_final_length -= 1;
+                keyboard_buffer_current_position -= 1;
+                delete_and_shift(keyboard_buffer_current_position, keyboard_buffer_final_length);
+
+                tty_echo(BACKSPACE);
+        }
+}
+
+static void handle_newline_character(void) {
+        keyboard_device_file_stream->buffer[keyboard_buffer_final_length] = ENDL;
+
+        while (keyboard_buffer_current_position <= keyboard_buffer_final_length) {
+                keyboard_buffer_current_position += 1;
+                tty_echo(ARROW_RIGHT);
+        }
+        tty_echo(ENDL);
+
+        newline_present = true;
+        keyboard_buffer_final_length += 1;
+        keyboard_buffer_current_position += 1;
+}
+
 static void handle_ascii_control_character(int c) {
         if (c == ETX) {
-                tty_echo('^');
-                tty_echo('C');
-
-                struct Process *process = nullptr;
-                const struct Process *wq_top = top_from_wait_queue(&keyboard_device_file_stream->read_wait);
-                if (wq_top && wq_top->pgid == keyboard_device_file_stream->fg_pgid) {
-                        process = pop_from_wait_queue(&keyboard_device_file_stream->read_wait);
-                }
-                else {
-                        process = scheduler_get_current_process();
-                }
-
-                if (process && process->pgid == keyboard_device_file_stream->fg_pgid) {
-                        signal_notify(process, SIGINT);
-                }
+                handle_etx_character();
         }
         else if (c == BACKSPACE) {
-                if (keyboard_buffer_current_position) {
-                        keyboard_buffer_final_length -= 1;
-                        keyboard_buffer_current_position -= 1;
-                        delete_and_shift(keyboard_buffer_current_position, keyboard_buffer_final_length);
-
-                        tty_echo(c);
-                }
+                handle_backspace_character();
+        }
+        else if (c == ENDL) {
+                handle_newline_character();
+        }
+        else {
+                insert_byte(c);
+                keyboard_buffer_final_length += 1;
+                keyboard_buffer_current_position += 1;
         }
 }
 
@@ -155,29 +185,30 @@ static void handle_ansi_escape_sequence(int c) {
                 }
         }
         else if (c == ARROW_UP || c == ARROW_DOWN) {
-                if (!tty_canonical_mode) {
+                if (!tty_canonical_mode) { //should we really print this? It must be rather the decision of the prgrm
                         tty_echo(c);
                 }
         }
 }
 
-static void handle_newline_character(void) {
-        keyboard_device_file_stream->buffer[keyboard_buffer_final_length - 1] = ENDL;
 
-        while (keyboard_buffer_current_position < keyboard_buffer_final_length) {
-                keyboard_buffer_current_position += 1;
-                tty_echo(ARROW_RIGHT);
+static void handle_ascii_printable_character(int c) {
+        insert_and_shift(c, keyboard_buffer_current_position, keyboard_buffer_final_length + 1);
+
+        if (tty_echo_on) {
+                insert_byte(c);
         }
-        tty_echo(ENDL);
 
-        newline_present = true;
+        keyboard_buffer_final_length += 1;
+        keyboard_buffer_current_position += 1;
 }
 
 void write_to_keyboard_buffer(int c) {
         static char escape_sequence[4] = {};
         static size_t escape_sequence_position = 0;
 
-        if (escape_sequence_position || c == ESC) {
+        if (tty_canonical_mode && (escape_sequence_position || c == ESC)) {
+                //FIXME: delivered escape sequences should be only for special keys on kbrd; sequences can be 3 or 4 bytes
                 escape_sequence[escape_sequence_position] = (char) c;
 
                 if (escape_sequence_position == 2) {
@@ -191,7 +222,7 @@ void write_to_keyboard_buffer(int c) {
                 }
         }
 
-        if (c == ETX || c == BACKSPACE) {
+        if (c >= 0 && c < 32) {
                 handle_ascii_control_character(c);
                 goto wake_up_if_applicable;
         }
@@ -203,18 +234,7 @@ void write_to_keyboard_buffer(int c) {
 
         // TODO: it would be wise to resize buffer if the contents do not fit
 
-        keyboard_buffer_final_length += 1;
-        keyboard_buffer_current_position += 1;
-        if (c == ENDL) {
-                handle_newline_character();
-                goto wake_up_if_applicable;
-        }
-
-        insert_and_shift(c, keyboard_buffer_current_position - 1, keyboard_buffer_final_length);
-
-        if (tty_echo_on) {
-                insert_byte(c);
-        }
+        handle_ascii_printable_character(c);
 
 wake_up_if_applicable:
         character_present = true;

@@ -491,9 +491,19 @@ keyboard_interrupt_handler:
 
         .exit_with_escape_code:
                 cpsie   i
-                ldr     r1, =0x1b5b00
-                orrs    r0, r0, r1
+                push    {r4}
+                mov     r4, r0
+
+                mov     r0, #0x1b
                 bl      write_to_keyboard_buffer
+
+                mov     r0, #0x5b
+                bl      write_to_keyboard_buffer
+
+                mov     r0, r4
+                bl      write_to_keyboard_buffer
+                pop     {r4}
+
                 pop     {pc}
 
         .exit_with_char:
