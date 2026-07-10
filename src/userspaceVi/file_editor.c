@@ -17,7 +17,7 @@ struct FileLine {
 
 struct FileEditor {
         bool read_only;
-        struct FileLine *lines;
+        struct FileLine *lines; /* array index corresponds to line number */
         size_t lines_size;
         size_t lines_cap;
 
@@ -193,7 +193,10 @@ static ssize_t readline(int fd, char **line_ptr, size_t *line_cap) {
         return 0;
 }
 
-struct Line *get_line(const struct FileEditor *editor, unsigned int line_number) {
+struct Line *get_line(const struct FileEditor *editor, const unsigned int line_number) {
+        if (editor->lines[line_number].location == NONE) {
+                return nullptr;
+        }
         const int destfd = editor->lines[line_number].location == FILE_OG ? editor->fd : editor->fdbak;
         lseek(destfd, editor->lines[line_number].file_offset, SEEK_SET);
 
@@ -219,3 +222,11 @@ struct Line *get_line(const struct FileEditor *editor, unsigned int line_number)
 }
 
 struct Line *new_line_at(struct FileEditor *editor, int line_number) {}
+
+bool check_line_exists(const struct FileEditor *editor, const unsigned int line_number) {
+        if (editor->lines[line_number].location == NONE) {
+                return false;
+        }
+
+        return true;
+}

@@ -200,11 +200,9 @@ void fetch_screen_at(struct VisualEditor *editor, const unsigned int line_number
                 struct Line *line = get_line(editor->file_editor, line_number_start + i - 1);
                 editor->lines[i - 1] = line;
         }
-
-        editor->top_line_number += abs(line_difference);
 }
 
-static inline int determine_column_offset(int line_number) {
+static int determine_column_offset(int line_number) {
         int column_offset = 1;
         while (line_number) {
                 column_offset += 1;
@@ -214,6 +212,59 @@ static inline int determine_column_offset(int line_number) {
 
         return column_offset;
 }
+
+
+static int line_number_field_length = 3;
+
+static void print_line_number(const unsigned int line_number) {
+        char line_num[10] = {}; //low chances the files opened will have 9 digit lines
+        move_to_col(1);
+        const int line_num_length = snprintf(line_num, 10, "%i", line_number);
+        printf("\x1b[90;49m%s\x1b[0m", line_num);
+        if (line_num_length >= line_number_field_length) {
+                line_number_field_length = line_num_length + 1;
+        }
+        for (int i = line_num_length; i < line_number_field_length; ++i) {
+                printf(" ");
+        }
+}
+
+static void print_line(struct VisualEditor *editor, const struct Line *line, const bool newline) {
+        if (!line || !line->line || !strlen(line->line)) {
+                return;
+        }
+        editor->current_line = line;
+
+        print_line_number(line->line_number);
+
+        int len = strlen(line->line) - 1;
+        len = len > 79 - line_number_field_length ? 79 - line_number_field_length : len;
+        write(1, line->line, len);
+
+        if (newline) {
+                printf("\n");
+        }
+}
+
+static void reprint_screen(struct VisualEditor *editor) {
+        printf("\x1b[H");
+
+        int i = 0;
+        for (i = 0; i < editor->lines_size - 1; ++i) {
+                print_line(editor, editor->lines[i], true);
+        }
+        print_line(editor, editor->lines[i], false);
+
+        printf("\x1b[%i;%iH",
+               editor->top_line_number,
+               line_number_field_length + 1
+        );
+}
+
+struct Cursor {
+        int row;
+        int col;
+};
 
 int run_editor(int argc, char **argv) {
         if (argc < 2) {
@@ -225,7 +276,7 @@ int run_editor(int argc, char **argv) {
         setpgid(0, pgid);
         ioctl(0, TTY_SPGRP, &pgid);
 
-        int lines_max = 39;
+        constexpr int lines_max = 38;
         struct VisualEditor *editor __attribute__((cleanup(free_visual_editor))) = create_visual_editor(
                 lines_max, argv[1]);
         if (!editor) {
@@ -233,9 +284,34 @@ int run_editor(int argc, char **argv) {
                 return 1;
         }
 
+        struct Cursor *cursor = malloc(sizeof(*cursor));
+        if (!cursor) {
+                dprintf(2, "[!] Could not instantiate visual editor.\n");
+                return 1;
+        }
+
         clear_screen();
-        printf("\x1b[1;%ir", lines_max); //set scrollable contents
+        printf("\x1b[1;%ir", lines_max); //set scrollable content
+
+        // -------------------------- STATUS BAR -------------------------
+        printf("\x1b[39;1H");
+        const size_t mode_len = 8;
+        printf("\x1b[30;102m NORMAL \x1b[0m"); //length always 8
+        const size_t filename_len = strlen(argv[1]) + 2;
+        printf("\x1b[37;107m %s \x1b[0m", argv[1]);
+        const size_t linenum_len = 10;
+        printf("\x1b[37;100m");
+        for (int i = 0; i < 79 - mode_len - filename_len - linenum_len; ++i) {
+                printf(" ");
+        }
+        printf("\x1b[0m");
+        printf("\x1b[30;102m 1:1      \x1b[0m\n");
+        // ---------------------------------------------------------------
+        printf("\x1b[H");
         fetch_screen_at(editor, 1);
+        reprint_screen(editor);
+        editor->current_line = editor->lines[0];
+        editor->top_line_number = 1;
 
         bool echo = false, canonical = false;
         ioctl(0, TTY_ECHO, &echo);
@@ -244,11 +320,69 @@ int run_editor(int argc, char **argv) {
         while (read(0, &c, 1) > 0) {
                 switch (c) {
                         case 'j': {
-                                fetch_screen_at(editor, editor->top_line_number + 1);
+                                unsigned int current_line_index =
+                                        editor->current_line->line_number - editor->top_line_number;
+
+                                if (current_line_index < editor->lines_size - 1) {
+                                        current_line_index += 1;
+                                        editor->current_line = editor->lines[current_line_index];
+
+                                        printf("\x1b[%i;%iH",
+                                               current_line_index + 1,
+                                               line_number_field_length + 1
+                                        );
+                                }
+                                else {
+                                        //check line exists
+                                        if (!check_line_exists(editor->file_editor,
+                                                               editor->current_line->line_number + 1)) {
+                                                break;
+                                        }
+                                        fetch_screen_at(editor, editor->top_line_number + 1);
+                                        const struct Line *line = editor->lines[editor->lines_size - 1];
+                                        printf("\x1b[S");
+
+                                        print_line(editor, line, false);
+                                        editor->top_line_number += 1;
+                                        editor->current_line = line;
+
+                                        printf("\x1b[%i;%iH",
+                                               editor->lines_size,
+                                               line_number_field_length + 1
+                                        );
+                                }
                         }
                         break;
                         case 'k': {
-                                fetch_screen_at(editor, editor->top_line_number - 1);
+                                if (editor->current_line->line_number == 1) {
+                                        break;
+                                }
+                                unsigned int current_line_index =
+                                        editor->current_line->line_number - editor->top_line_number;
+
+                                if (current_line_index > 0) {
+                                        current_line_index -= 1;
+                                        editor->current_line = editor->lines[current_line_index];
+
+                                        printf("\x1b[%i;%iH",
+                                               current_line_index + 1,
+                                               line_number_field_length + 1
+                                        );
+                                }
+                                else {
+                                        printf("\x1b[T");
+                                        fetch_screen_at(editor, editor->top_line_number - 1);
+
+                                        printf("\x1b[H");
+                                        print_line(editor, editor->lines[0], false);
+                                        editor->top_line_number -= 1;
+                                        editor->current_line = editor->lines[0];
+
+                                        printf("\x1b[%i;%iH",
+                                               1,
+                                               line_number_field_length + 1
+                                        );
+                                }
                         }
                         break;
                         case 'H': {
@@ -270,13 +404,15 @@ int run_editor(int argc, char **argv) {
                         }
                         break;
                         case ':':
-                                printf("\x1b[%iH", editor->lines_size + 1);
+                                printf("\x1b[40;1H");
                                 printf(":");
                                 break;
                         default:
                                 break;
                 }
         }
+
+        free(cursor);
 
         return 0;
 }

@@ -21,4 +21,6 @@ struct Line *get_line(const struct FileEditor *editor, unsigned int line_number)
 
 struct Line *new_line_at(struct FileEditor *editor, int line_number);
 
+bool check_line_exists(const struct FileEditor *editor, unsigned int line_number);
+
 #endif //OS_FILE_EDITOR_H
