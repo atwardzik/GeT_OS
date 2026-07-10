@@ -7,20 +7,17 @@
 
 #include "editor.h"
 
-void move_home(void);
+void screen_move_home(void);
 
-void move_end(void);
+void screen_move_absolute(unsigned int x, unsigned int y);
 
-void move_cmd_field(void);
+void screen_move_to_col(unsigned int x);
 
-void move_absolute(int x, int y);
+void screen_clear(void);
 
-void move_to_col(int x);
+void screen_scroll_dir_up(void);
 
-void clear_screen(void);
-
-
-void write_line(struct Line *line);
+void screen_scroll_dir_down(void);
 
 void highlight(const char *pattern);
 

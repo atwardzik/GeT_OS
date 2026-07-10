@@ -13,4 +13,13 @@ struct Line {
         bool edited;
 };
 
+enum Mode {
+        NORMAL,
+        INSERT,
+        REPLACE,
+        VISUAL,
+        VLINE,
+        VBLOCK,
+};
+
 #endif //OS_EDITOR_H

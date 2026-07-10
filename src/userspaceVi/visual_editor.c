@@ -8,19 +8,7 @@
 
 #include "errno.h"
 #include "libc.h"
-
-struct VisualEditor {
-        unsigned int top_line_number;
-
-        const struct FileEditor *file_editor;
-
-        struct Line **lines;
-        unsigned int lines_size;
-
-        const struct Line *current_line;
-
-        struct Line *cmd_line;
-};
+#include "status_bar.h"
 
 static struct VisualEditor *create_visual_editor(const unsigned int lines_max, const char *filename) {
         struct VisualEditor *editor = malloc(sizeof(*editor));
@@ -35,7 +23,7 @@ static struct VisualEditor *create_visual_editor(const unsigned int lines_max, c
         }
         memset(editor->lines, 0, sizeof(struct Line *) * lines_max);
 
-        const int fd = open(filename, O_RDONLY | O_WRONLY, 0);
+        const int fd = open(filename, O_RDWR, 0);
         if (fd < 0) {
                 dprintf(2, "[!] No such file.\n");
                 free(editor->lines);
@@ -56,6 +44,10 @@ static struct VisualEditor *create_visual_editor(const unsigned int lines_max, c
         editor->current_line = nullptr;
         editor->cmd_line = nullptr;
         editor->file_editor = file_editor;
+        editor->current_mode = NORMAL;
+        editor->filename = filename;
+        editor->cursor.row = 1;
+        editor->cursor.col = 1;
 
         return editor;
 }
@@ -158,7 +150,7 @@ void fetch_whole_screen(const struct VisualEditor *editor, const unsigned int li
         }
 }
 
-void fetch_screen_at(struct VisualEditor *editor, const unsigned int line_number_start) {
+void fetch_screen_at(const struct VisualEditor *editor, const unsigned int line_number_start) {
         const int line_difference = (int) editor->top_line_number - (int) line_number_start;
         if (line_difference == 0 || abs(line_difference) >= editor->lines_size) {
                 fetch_whole_screen(editor, line_number_start);
@@ -202,7 +194,7 @@ void fetch_screen_at(struct VisualEditor *editor, const unsigned int line_number
         }
 }
 
-static int determine_column_offset(int line_number) {
+static int determine_column_offset(unsigned int line_number) {
         int column_offset = 1;
         while (line_number) {
                 column_offset += 1;
@@ -218,7 +210,7 @@ static int line_number_field_length = 3;
 
 static void print_line_number(const unsigned int line_number) {
         char line_num[10] = {}; //low chances the files opened will have 9 digit lines
-        move_to_col(1);
+        screen_move_to_col(1);
         const int line_num_length = snprintf(line_num, 10, "%i", line_number);
         printf("\x1b[90;49m%s\x1b[0m", line_num);
         if (line_num_length >= line_number_field_length) {
@@ -261,10 +253,6 @@ static void reprint_screen(struct VisualEditor *editor) {
         );
 }
 
-struct Cursor {
-        int row;
-        int col;
-};
 
 int run_editor(int argc, char **argv) {
         if (argc < 2) {
@@ -284,30 +272,11 @@ int run_editor(int argc, char **argv) {
                 return 1;
         }
 
-        struct Cursor *cursor = malloc(sizeof(*cursor));
-        if (!cursor) {
-                dprintf(2, "[!] Could not instantiate visual editor.\n");
-                return 1;
-        }
-
-        clear_screen();
+        screen_clear();
         printf("\x1b[1;%ir", lines_max); //set scrollable content
 
-        // -------------------------- STATUS BAR -------------------------
-        printf("\x1b[39;1H");
-        const size_t mode_len = 8;
-        printf("\x1b[30;102m NORMAL \x1b[0m"); //length always 8
-        const size_t filename_len = strlen(argv[1]) + 2;
-        printf("\x1b[37;107m %s \x1b[0m", argv[1]);
-        const size_t linenum_len = 10;
-        printf("\x1b[37;100m");
-        for (int i = 0; i < 79 - mode_len - filename_len - linenum_len; ++i) {
-                printf(" ");
-        }
-        printf("\x1b[0m");
-        printf("\x1b[30;102m 1:1      \x1b[0m\n");
-        // ---------------------------------------------------------------
-        printf("\x1b[H");
+        reprint_status_bar(editor);
+        screen_move_home();
         fetch_screen_at(editor, 1);
         reprint_screen(editor);
         editor->current_line = editor->lines[0];
@@ -326,31 +295,24 @@ int run_editor(int argc, char **argv) {
                                 if (current_line_index < editor->lines_size - 1) {
                                         current_line_index += 1;
                                         editor->current_line = editor->lines[current_line_index];
-
-                                        printf("\x1b[%i;%iH",
-                                               current_line_index + 1,
-                                               line_number_field_length + 1
-                                        );
                                 }
                                 else {
-                                        //check line exists
                                         if (!check_line_exists(editor->file_editor,
                                                                editor->current_line->line_number + 1)) {
                                                 break;
                                         }
                                         fetch_screen_at(editor, editor->top_line_number + 1);
                                         const struct Line *line = editor->lines[editor->lines_size - 1];
-                                        printf("\x1b[S");
+                                        screen_scroll_dir_up();
 
                                         print_line(editor, line, false);
                                         editor->top_line_number += 1;
                                         editor->current_line = line;
-
-                                        printf("\x1b[%i;%iH",
-                                               editor->lines_size,
-                                               line_number_field_length + 1
-                                        );
                                 }
+                                editor->cursor.row += 1;
+
+                                reprint_status_bar(editor);
+                                screen_move_absolute(current_line_index + 1, line_number_field_length + 1);
                         }
                         break;
                         case 'k': {
@@ -363,44 +325,52 @@ int run_editor(int argc, char **argv) {
                                 if (current_line_index > 0) {
                                         current_line_index -= 1;
                                         editor->current_line = editor->lines[current_line_index];
-
-                                        printf("\x1b[%i;%iH",
-                                               current_line_index + 1,
-                                               line_number_field_length + 1
-                                        );
                                 }
                                 else {
-                                        printf("\x1b[T");
+                                        screen_scroll_dir_down();
+
                                         fetch_screen_at(editor, editor->top_line_number - 1);
 
                                         printf("\x1b[H");
                                         print_line(editor, editor->lines[0], false);
                                         editor->top_line_number -= 1;
                                         editor->current_line = editor->lines[0];
-
-                                        printf("\x1b[%i;%iH",
-                                               1,
-                                               line_number_field_length + 1
-                                        );
                                 }
+
+                                editor->cursor.row -= 1;
+                                reprint_status_bar(editor);
+                                screen_move_absolute(current_line_index + 1, line_number_field_length + 1);
                         }
                         break;
                         case 'H': {
-                                const int first_line_number = editor->top_line_number;
-                                const int column_offset = determine_column_offset(first_line_number);
+                                const unsigned int first_line_number = editor->top_line_number;
+                                const unsigned int column_offset = determine_column_offset(first_line_number);
 
-                                move_absolute(1, column_offset);
+                                editor->cursor.row = first_line_number;
+                                editor->cursor.col = column_offset;
+
+                                screen_move_absolute(1, column_offset);
                         }
                         break;
-                        case 'M':
-                                printf("\x1b[%iH", (editor->lines_size - 1) / 2);
-                                // jump_column_line_offset(editor);
-                                break;
-                        case 'L': {
-                                const int last_line_number = editor->top_line_number + editor->lines_size - 1;
-                                const int column_offset = determine_column_offset(last_line_number);
+                        case 'M': {
+                                const unsigned int middle_line_number =
+                                        editor->top_line_number + editor->lines_size / 2;
+                                const unsigned int column_offset = determine_column_offset(middle_line_number);
 
-                                move_absolute(editor->lines_size, column_offset);
+                                editor->cursor.row = middle_line_number;
+                                editor->cursor.col = column_offset;
+
+                                screen_move_absolute(middle_line_number, column_offset);
+                        }
+                        break;
+                        case 'L': {
+                                const unsigned int last_line_number = editor->top_line_number + editor->lines_size - 1;
+                                const unsigned int column_offset = determine_column_offset(last_line_number);
+
+                                editor->cursor.row = last_line_number;
+                                editor->cursor.col = column_offset;
+
+                                screen_move_absolute(editor->lines_size, column_offset);
                         }
                         break;
                         case ':':
@@ -411,8 +381,6 @@ int run_editor(int argc, char **argv) {
                                 break;
                 }
         }
-
-        free(cursor);
 
         return 0;
 }
