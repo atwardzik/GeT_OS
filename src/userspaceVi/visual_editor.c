@@ -213,13 +213,13 @@ static void print_line_number(const unsigned int line_number) {
         screen_move_to_col(1);
         const int line_num_length = snprintf(line_num, 10, "%i", line_number);
         printf("\x1b[90;49m%s\x1b[0m", line_num);
-        if (line_num_length >= line_number_field_length) {
-                line_number_field_length = line_num_length + 1;
-        }
+
         for (int i = line_num_length; i < line_number_field_length; ++i) {
                 printf(" ");
         }
 }
+
+static void reprint_screen(struct VisualEditor *editor);
 
 static void print_line(struct VisualEditor *editor, const struct Line *line, const bool newline) {
         if (!line || !line->line || !strlen(line->line)) {
@@ -227,6 +227,12 @@ static void print_line(struct VisualEditor *editor, const struct Line *line, con
         }
         editor->current_line = line;
 
+        const int line_number_field_len = determine_column_offset(line->line_number) - 1;
+        if (line_number_field_len > line_number_field_length) {
+                line_number_field_length = line_number_field_len;
+                reprint_screen(editor);
+                return;
+        }
         print_line_number(line->line_number);
 
         int len = strlen(line->line) - 1;
@@ -239,7 +245,7 @@ static void print_line(struct VisualEditor *editor, const struct Line *line, con
 }
 
 static void reprint_screen(struct VisualEditor *editor) {
-        printf("\x1b[H");
+        screen_move_home();
 
         int i = 0;
         for (i = 0; i < editor->lines_size - 1; ++i) {
@@ -247,10 +253,7 @@ static void reprint_screen(struct VisualEditor *editor) {
         }
         print_line(editor, editor->lines[i], false);
 
-        printf("\x1b[%i;%iH",
-               editor->top_line_number,
-               line_number_field_length + 1
-        );
+        screen_move_absolute(1, line_number_field_length + 1);
 }
 
 
