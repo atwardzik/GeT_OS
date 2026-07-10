@@ -24,6 +24,8 @@ extern void vga_start(void);
 
 extern void vga_set_cursor_blink(uint32_t us);
 
+extern void vga_reset_cursor_timer(void);
+
 
 enum PhysicalColorCode {
         PHYSICAL_BLACK         = 0b000000, // #000000
@@ -301,6 +303,10 @@ void vga_update_cursor_position(const unsigned int row, const unsigned int colum
         cursor_column_position = column;
 
         vga_determine_letter_under_cursor();
+        vga_reset_cursor_timer();
+        if (!cursor_on) {
+                vga_xor_cursor();
+        }
 }
 
 void vga_setup_cursor(

@@ -405,18 +405,9 @@ CH0_READ_ADDR:  .word 0x50000000
 CH1_READ_ADDR:  .word 0x50000040
 
 .thumb_func
-.global vga_cursor_blinker_handler
+.global vga_reset_cursor_timer
 .align 4
-vga_cursor_blinker_handler:
-        cpsid   i
-        push    {r4, lr}
-
-        ldr     r4, =cursor_blink_time
-        ldr     r4, [r4]
-        @ 1) xor cursor pointer
-        bl      vga_xor_cursor
-
-        @ 2) reset
+vga_reset_cursor_timer:
         ldr     r3, TIMER_BASE
         adds    r3, r3, TIMER_INTR
         movs    r2, #1
@@ -429,11 +420,28 @@ vga_cursor_blinker_handler:
 
         ldr     r3, TIMER_BASE
         ldr     r1, [r3, TIMER_TIMERAWL_OFFSET]         @ get TIMERAWL
-        add     r1, r1, r4                              @ TIMERAWL + desired alarm
+        ldr     r0, =cursor_blink_time
+        ldr     r0, [r0]
+        add     r1, r1, r0                              @ TIMERAWL + desired alarm
         str     r1, [r3, TIMER_ALARM0_OFFSET]
 
+        bx      lr
+
+.thumb_func
+.global vga_cursor_blinker_handler
+.align 4
+vga_cursor_blinker_handler:
+        cpsid   i
+        push    {lr}
+
+        @ 1) xor cursor pointer
+        bl      vga_xor_cursor
+
+        @ 2) reset
+        bl      vga_reset_cursor_timer
+
         cpsie   i
-        pop     {r4, pc}
+        pop     {pc}
 
 /**
  * Starts the cursor blinking.
