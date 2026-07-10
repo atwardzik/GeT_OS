@@ -73,7 +73,7 @@ static void scroll_vertical_dir_up() {
 
         const int scrollable_area_bottom = ScreenWriter.scrollable_area_bottom;
 
-        for (size_t i = ScreenWriter.scrollable_area_top + 1; i < scrollable_area_bottom; ++i) {
+        for (size_t i = ScreenWriter.scrollable_area_top + 1; i <= scrollable_area_bottom; ++i) {
                 for (size_t j = 0; j < BUFFER_WIDTH; ++j) {
                         ScreenWriter.buffer->chars[i - 1][j] = ScreenWriter.buffer->chars[i][j];
                         vga_put_byte_encoded_color_letter(ScreenWriter.buffer->chars[i - 1][j].ascii_code,
@@ -85,14 +85,45 @@ static void scroll_vertical_dir_up() {
 
         const struct SingleChar empty_char = {0x00, ScreenWriter.current_color_code};
 
-        const ByteColorCode prev_color_code = ScreenWriter.buffer->chars[scrollable_area_bottom - 2][BUFFER_WIDTH - 1].
+        const ByteColorCode prev_color_code = ScreenWriter.buffer->chars[scrollable_area_bottom - 1][BUFFER_WIDTH - 1].
                 color_code;
 
         for (size_t i = 0; i < BUFFER_WIDTH; ++i) {
-                ScreenWriter.buffer->chars[scrollable_area_bottom - 1][i] = empty_char;
+                ScreenWriter.buffer->chars[scrollable_area_bottom][i] = empty_char;
 
                 vga_put_byte_encoded_color_letter(empty_char.ascii_code,
-                                                  scrollable_area_bottom - 1, i,
+                                                  scrollable_area_bottom, i,
+                                                  prev_color_code
+                );
+        }
+}
+
+static void scroll_vertical_dir_dn() {
+        vga_clr_cursor();
+
+        const int scrollable_area_top = ScreenWriter.scrollable_area_top;
+        const int scrollable_area_bottom = ScreenWriter.scrollable_area_bottom;
+
+        for (size_t i = scrollable_area_bottom; i > scrollable_area_top; --i) {
+                for (size_t j = 0; j < BUFFER_WIDTH; ++j) {
+                        ScreenWriter.buffer->chars[i][j] = ScreenWriter.buffer->chars[i - 1][j];
+                        vga_put_byte_encoded_color_letter(ScreenWriter.buffer->chars[i][j].ascii_code,
+                                                          i, j,
+                                                          ScreenWriter.buffer->chars[i][j].color_code
+                        );
+                }
+        }
+
+        const struct SingleChar empty_char = {0x00, ScreenWriter.current_color_code};
+
+        const ByteColorCode prev_color_code = ScreenWriter.buffer->chars[scrollable_area_top][BUFFER_WIDTH - 1].
+                color_code;
+
+        for (size_t i = 0; i < BUFFER_WIDTH; ++i) {
+                ScreenWriter.buffer->chars[scrollable_area_top][i] = empty_char;
+
+                vga_put_byte_encoded_color_letter(empty_char.ascii_code,
+                                                  scrollable_area_top, i,
                                                   prev_color_code
                 );
         }
@@ -164,16 +195,13 @@ static void scroll_horizontal_left(const unsigned int row_position, const unsign
 static void write_new_line() {
         save_char_to_buffer(ENDL);
 
-        if (ScreenWriter.current_row_position == BUFFER_HEIGHT - 1) {
+        if (ScreenWriter.current_row_position == ScreenWriter.scrollable_area_bottom) {
                 scroll_vertical_dir_up();
         }
         else {
                 ScreenWriter.current_row_position += 1;
         }
 
-        vga_put_byte_encoded_color_letter(ENDL, ScreenWriter.current_row_position,
-                                          ScreenWriter.current_column_position,
-                                          ScreenWriter.current_color_code);
         ScreenWriter.current_column_position = 0;
 }
 
@@ -307,6 +335,9 @@ int handle_escape_sequence(uint8_t *escape_sequence, size_t *escape_sequence_pos
         }
         else if (c == 'S') {
                 scroll_vertical_dir_up();
+        }
+        else if (c == 'T') {
+                scroll_vertical_dir_dn();
         }
         else if (c == 'J' && left.present && left.val == 2) {
                 clear_screen();
