@@ -26,6 +26,7 @@
 vga_clr_screen:
         push    {lr}
 
+#if 0
         @ movs    r0, #0                  @ PIO BLOCK 0
         @ movs    r1, #7                  @ sm 0, 1, 2
         @ movs    r2, #0                  @ enabled=false
@@ -43,10 +44,13 @@ vga_clr_screen:
         @ str     r1, [r0]
         @ ldr     r1, =0xa001             @ mov pins, x
         @ str     r1, [r0]
-#if 0
+#endif
         ldr     r0, =0x20035000
+        ldr     r3, =(640 * 100)
+        add     r0, r0, r3
         movs    r1, #0
         ldr     r2, =307200
+        sub     r2, r2, r3
 
         .loop_clear:
                 str     r1, [r0]
@@ -54,7 +58,6 @@ vga_clr_screen:
                 subs    r2, r2, #4
                 cmp     r2, #0
                 bne     .loop_clear
-#endif
         pop     {pc}
 
 .thumb_func

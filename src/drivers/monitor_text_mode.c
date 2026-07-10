@@ -27,9 +27,16 @@ struct CharBuffer {
 static struct {
         size_t current_row_position;
         size_t current_column_position;
+        int scrollable_area_top;
+        int scrollable_area_bottom;
         ByteColorCode current_color_code;
         struct CharBuffer *buffer;
-} ScreenWriter = {0, 0, (BLACK << 4 | WHITE), (struct CharBuffer *) screen_buffer_ptr};
+} ScreenWriter = {
+        0, 0,
+        0, BUFFER_HEIGHT,
+        (BLACK << 4 | WHITE),
+        (struct CharBuffer *) screen_buffer_ptr
+};
 
 
 static void move_buffer_position_left() {
@@ -61,13 +68,16 @@ static void save_char_to_buffer(const char c) {
         ScreenWriter.buffer->chars[row][col] = ch;
 }
 
-static void scroll_vertical() {
-        vga_clr_all();
+static void scroll_vertical_dir_up() {
+        vga_clr_cursor();
 
-        for (size_t i = 1; i < BUFFER_HEIGHT; ++i) {
+        const int scrollable_area_bottom = ScreenWriter.scrollable_area_bottom;
+
+        for (size_t i = ScreenWriter.scrollable_area_top + 1; i < scrollable_area_bottom; ++i) {
                 for (size_t j = 0; j < BUFFER_WIDTH; ++j) {
                         ScreenWriter.buffer->chars[i - 1][j] = ScreenWriter.buffer->chars[i][j];
-                        vga_put_byte_encoded_color_letter(ScreenWriter.buffer->chars[i - 1][j].ascii_code, i - 1, j,
+                        vga_put_byte_encoded_color_letter(ScreenWriter.buffer->chars[i - 1][j].ascii_code,
+                                                          i - 1, j,
                                                           ScreenWriter.buffer->chars[i - 1][j].color_code
                         );
                 }
@@ -75,13 +85,15 @@ static void scroll_vertical() {
 
         const struct SingleChar empty_char = {0x00, ScreenWriter.current_color_code};
 
+        const ByteColorCode prev_color_code = ScreenWriter.buffer->chars[scrollable_area_bottom - 2][BUFFER_WIDTH - 1].
+                color_code;
+
         for (size_t i = 0; i < BUFFER_WIDTH; ++i) {
-                ScreenWriter.buffer->chars[BUFFER_HEIGHT - 1][i] = empty_char;
+                ScreenWriter.buffer->chars[scrollable_area_bottom - 1][i] = empty_char;
+
                 vga_put_byte_encoded_color_letter(empty_char.ascii_code,
-                                                  BUFFER_HEIGHT - 1,
-                                                  i,
-                                                  ScreenWriter.buffer->chars[BUFFER_HEIGHT - 2][BUFFER_WIDTH - 1].
-                                                  color_code
+                                                  scrollable_area_bottom - 1, i,
+                                                  prev_color_code
                 );
         }
 }
@@ -153,7 +165,7 @@ static void write_new_line() {
         save_char_to_buffer(ENDL);
 
         if (ScreenWriter.current_row_position == BUFFER_HEIGHT - 1) {
-                scroll_vertical();
+                scroll_vertical_dir_up();
         }
         else {
                 ScreenWriter.current_row_position += 1;
@@ -234,7 +246,22 @@ static void move_cursor_absolute(param_t *left, param_t *right) {
         move_cursor(left->val - 1, right->val - 1);
 }
 
-void parse_arguments(const int c, const uint8_t *escape_sequence, param_t *left, param_t *right) {
+static void define_scrolling_area(param_t *left, param_t *right) {
+        if (!left->present || !right->present) {
+                return;
+        }
+
+        ScreenWriter.scrollable_area_top = left->val - 1;
+        ScreenWriter.scrollable_area_bottom = right->val - 1;
+}
+
+static void clear_screen(void) {
+        memset(ScreenWriter.buffer->chars, 0, BUFFER_HEIGHT * BUFFER_WIDTH * sizeof(struct SingleChar));
+
+        vga_clr_all();
+}
+
+static void parse_arguments(const int c, const uint8_t *escape_sequence, param_t *left, param_t *right) {
         const char action[2] = {(char) c, 0};
         const int param_splitter = strcspn(escape_sequence, ";");
         const int action_code = strcspn(escape_sequence, action);
@@ -279,10 +306,16 @@ int handle_escape_sequence(uint8_t *escape_sequence, size_t *escape_sequence_pos
                 move_cursor_absolute(&left, &right);
         }
         else if (c == 'S') {
-                scroll_vertical();
+                scroll_vertical_dir_up();
+        }
+        else if (c == 'J' && left.present && left.val == 2) {
+                clear_screen();
         }
         else if (c == 'G' && left.present) {
                 move_cursor(ScreenWriter.current_row_position, left.val - 1);
+        }
+        else if (c == 'r') {
+                define_scrolling_area(&left, &right);
         }
 
         *escape_sequence_position = 0;
