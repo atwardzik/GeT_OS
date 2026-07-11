@@ -39,5 +39,9 @@ int accept(int sockfd, struct sockaddr *addr, size_t addrlen);
 
 int connect(int sockfd, const struct sockaddr *addr, size_t adrlen);
 
+uint16_t htons(uint16_t hostshort);
+
+int inet_aton(const char *host_address, struct in_addr *inp);
+
 
 #endif //OS_SOCKET_H

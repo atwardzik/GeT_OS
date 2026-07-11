@@ -779,7 +779,7 @@ int inet_aton(const char *host_address, struct in_addr *inp) {
                 if (host_address[j] == '.' || (host_address[j] == 0 && i == 3)) {
                         j += 1;
                         octet[octet_index] = 0;
-                        uint8_t o = strtoul(octet, nullptr, 10);
+                        const uint8_t o = strtoul(octet, nullptr, 10);
                         ((unsigned char *) &inp->s_addr)[i] = o;
                         octet_index = 0;
                 }

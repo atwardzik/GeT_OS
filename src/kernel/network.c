@@ -239,7 +239,7 @@ int sys_connect(int sockfd, const struct sockaddr *addr, size_t addrlen) {
         if (sockfd >= current_process->files.count || sockfd < 0 || current_process->files.fdtable[sockfd] == nullptr) {
                 sys_write(1, "[!] There is no such socket descriptor\n", 39);
                 __asm__("bkpt   #0");
-                return -1;
+                return -EBADF;
         }
 
         struct File *socket_file = current_process->files.fdtable[sockfd];
