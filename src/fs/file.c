@@ -235,7 +235,7 @@ int sys_read(int file, char *ptr, int len) {
         if (file >= current_process->files.count || file < 0 || current_process->files.fdtable[file] == nullptr) {
                 printk("[!] There is no such file descriptor\n");
                 __asm__("bkpt   #0");
-                return 0;
+                return -EBADF;
         }
 
         struct File *current_file = current_process->files.fdtable[file];
@@ -252,7 +252,7 @@ int sys_write(const int file, char *ptr, const int len) {
         if (file >= current_process->files.count || file < 0 || current_process->files.fdtable[file] == nullptr) {
                 printk("[!] There is no such file descriptor\n");
                 __asm__("bkpt   #0");
-                return 0;
+                return -EBADF;
         }
 
         struct File *current_file = current_process->files.fdtable[file];
