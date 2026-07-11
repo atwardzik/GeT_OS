@@ -1,0 +1,78 @@
+<html lang="en">
+
+<head>
+        <title>System Calls Manual - write</title>
+</head>
+
+<body>
+        <h3>NAME</h3>
+        <code>write</code> - write output
+
+        <h3>SYNOPSIS</h3>
+        <pre>
+#include &lt;libc.h&gt;
+
+int write(int file, void *buf, int len);
+</pre>
+
+        <h3>DESCRIPTION</h3>
+        <code>write()</code> attempts to write <var>len</var> bytes of data from from buffer pointed to by
+        <var>buf</var> into object referenced by <var>file</var> descriptor. This function is based on the Virtual
+        Filesystem (VFS) interface which encapsulates the driver internals while giving possibility to write specific
+        data into it. Therefore it is possible to both write physical files as well as stdout or even pending data from an
+        open socket.
+
+        <h4>PARAMETERS</h4>
+        <ul>
+                <li>
+                        <var>file</var> - descriptor of a file. Reserved file descriptors are:
+                        <ol>
+                                <li>stdin</li>
+                                <li>stdout</li>
+                                <li>stderr</li>
+                        </ol>
+                </li>
+                <li>
+                        <var>buf</var> - buffer the data will be written into
+                </li>
+                <li>
+                        <var>len</var> - length of the data that will be read. Please note it is not the length of the
+                        passed parameter <var>buf</var>. You must ensure the buffer is large enough to fit the data you
+                        are reading. Failing may cause undefined behaviour.
+                </li>
+        </ul>
+
+
+        <h3>RETURN VALUES</h3>
+        Positive number corresponding to the number of bytes written into <var>buf</var>. When the data is unavailable
+        due to some reasons that are expected by the driver, <code>read</code> may return 0.
+        A negative error code is returned if an error occurs.
+
+
+        <h3>ERRORS</h3>
+        <ul>
+                <li><code>[EBADF]</code> - <var>file</var> is not a valid file descriptor</li>
+                <li><code>[ENOMEM]</code> - out of memory while trying to traverse the filesystem structure</li>
+        </ul>
+
+
+        <h3>CODE EXAMPLES</h3>
+        <pre>
+
+</pre>
+
+        <h3>SEE ALSO</h3>
+        <a href="write.htm"><code>write</code></a>
+
+
+        <h3>AUTHORS</h3>
+        Artur Twardzik
+
+        <br /><br />
+
+        <pre>
+GeT OS v0.1.1                                                     July 11, 2026
+</pre>
+</body>
+
+</html>
