@@ -30,7 +30,7 @@ void screen_scroll_dir_up(void) {
         printf("\x1b[S");
 }
 
-void screen_scroll_dir_down(void) {
+void screen_scroll_dir_dn(void) {
         printf("\x1b[T");
 }
 

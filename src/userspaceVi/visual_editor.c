@@ -16,13 +16,6 @@ static struct VisualEditor *create_visual_editor(const unsigned int lines_max, c
                 return nullptr;
         }
 
-        editor->lines = malloc(sizeof(struct Line *) * lines_max);
-        if (!editor->lines) {
-                free(editor);
-                return nullptr;
-        }
-        memset(editor->lines, 0, sizeof(struct Line *) * lines_max);
-
         const int fd = open(filename, O_RDWR, 0);
         if (fd < 0) {
                 dprintf(2, "[!] No such file.\n");
@@ -33,15 +26,22 @@ static struct VisualEditor *create_visual_editor(const unsigned int lines_max, c
 
         struct FileEditor *file_editor = create_file_editor(fd);
         if (!file_editor) {
-                dprintf(2, "[!] Could not instantiate file editor.\n");
-                free(editor->lines);
                 free(editor);
                 return nullptr;
         }
 
+        editor->lines = malloc(sizeof(struct Line *) * lines_max);
+        if (!editor->lines) {
+                free(file_editor);
+                free(editor);
+                return nullptr;
+        }
+        for (int i = 0; i < lines_max; ++i) {
+                editor->lines[i] = get_line(file_editor, i + 1);
+        }
+
         editor->lines_size = lines_max;
         editor->top_line_number = 1;
-        editor->current_line = nullptr;
         editor->cmd_line = nullptr;
         editor->file_editor = file_editor;
         editor->current_mode = NORMAL;
@@ -68,38 +68,11 @@ static void free_visual_editor(struct VisualEditor **editor) {
         free(*editor);
 }
 
-void save_onscreen_lines(
-        const struct VisualEditor *editor, const unsigned int screen_line_start, const unsigned int screen_line_end
-) {
-        for (unsigned int i = screen_line_start - 1; i <= screen_line_end - 1; ++i) {
-                struct Line *line = editor->lines[i];
-                if (line && line->edited) {
-                        save_line(editor->file_editor, line);
-                }
-        }
-}
+static void visual_editor_scroll_dir_up(const struct VisualEditor *editor) {
+        unsigned int i = 0;
 
-void free_onscreen_lines(
-        const struct VisualEditor *editor, const unsigned int screen_line_start, const unsigned int screen_line_end
-) {
-        for (unsigned int i = screen_line_start - 1; i <= screen_line_end - 1; ++i) {
-                free(editor->lines[i]);
-                editor->lines[i] = nullptr;
-        }
-}
-
-enum ShiftDirection {
-        DIR_UP,
-        DIR_DN,
-};
-
-void shift_dir_up(
-        const struct VisualEditor *editor, const unsigned int screen_line_start, const unsigned int shift_amount
-) {
-        unsigned int i = screen_line_start - 1;
-
-        while (i <= editor->lines_size - 1) {
-                const unsigned int prev_index = i + shift_amount;
+        while (i <= editor->cursor.row) {
+                const unsigned int prev_index = i + 1;
                 if (prev_index > editor->lines_size - 1) {
                         break;
                 }
@@ -107,16 +80,16 @@ void shift_dir_up(
                 editor->lines[i] = editor->lines[prev_index];
                 i += 1;
         }
+
+        screen_scroll_dir_up();
 }
 
-void shift_dir_dn(
-        const struct VisualEditor *editor, const unsigned int screen_line_start, const unsigned int shift_amount
-) {
+static void visual_editor_scroll_dir_dn(const struct VisualEditor *editor) {
         int i = editor->lines_size - 1;
 
         while (i >= 0) {
-                const int prev_index = i - shift_amount;
-                if (prev_index < screen_line_start - 1) {
+                const int prev_index = i - 1;
+                if (prev_index < editor->cursor.row - editor->top_line_number) {
                         editor->lines[i] = nullptr;
                 }
                 else {
@@ -125,73 +98,8 @@ void shift_dir_dn(
 
                 i -= 1;
         }
-}
 
-void shift(
-        const struct VisualEditor *editor, const enum ShiftDirection shift_dir, const unsigned int screen_line_start,
-        const unsigned int shift_amount
-) {
-        if (shift_dir == DIR_DN) {
-                shift_dir_dn(editor, screen_line_start, shift_amount);
-        }
-        else {
-                shift_dir_up(editor, screen_line_start, shift_amount);
-        }
-}
-
-void fetch_whole_screen(const struct VisualEditor *editor, const unsigned int line_number_start) {
-        save_onscreen_lines(editor, 1, editor->lines_size);
-
-        free_onscreen_lines(editor, 1, editor->lines_size);
-
-        for (unsigned int i = 0; i < editor->lines_size; ++i) {
-                struct Line *line = get_line(editor->file_editor, line_number_start + i);
-                editor->lines[i] = line;
-        }
-}
-
-void fetch_screen_at(const struct VisualEditor *editor, const unsigned int line_number_start) {
-        const int line_difference = (int) editor->top_line_number - (int) line_number_start;
-        if (line_difference == 0 || abs(line_difference) >= editor->lines_size) {
-                fetch_whole_screen(editor, line_number_start);
-                return;
-        }
-        const enum ShiftDirection shift_dir = line_difference > 0 ? DIR_DN : DIR_UP;
-
-        unsigned int invalid_screen_lines_start = 0;
-        unsigned int invalid_screen_lines_end = 0;
-        if (shift_dir == DIR_DN) {
-                invalid_screen_lines_start = editor->lines_size - abs(line_difference) + 1;
-                invalid_screen_lines_end = editor->lines_size;
-        }
-        else if (shift_dir == DIR_UP) {
-                invalid_screen_lines_start = 1;
-                invalid_screen_lines_end = abs(line_difference);
-        }
-
-
-        save_onscreen_lines(editor, invalid_screen_lines_start, invalid_screen_lines_end);
-
-        free_onscreen_lines(editor, invalid_screen_lines_start, invalid_screen_lines_end);
-
-        shift(editor, shift_dir, 1, abs(line_difference));
-
-
-        unsigned int destination_screen_line_start = 0;
-        unsigned int destination_screen_line_end = 0;
-        if (shift_dir == DIR_DN) {
-                destination_screen_line_start = 1;
-                destination_screen_line_end = line_difference;
-        }
-        else if (shift_dir == DIR_UP) {
-                destination_screen_line_start = editor->lines_size - abs(line_difference) + 1;
-                destination_screen_line_end = editor->lines_size;
-        }
-
-        for (unsigned int i = destination_screen_line_start; i <= destination_screen_line_end; ++i) {
-                struct Line *line = get_line(editor->file_editor, line_number_start + i - 1);
-                editor->lines[i - 1] = line;
-        }
+        screen_scroll_dir_dn();
 }
 
 static int determine_column_offset(unsigned int line_number) {
@@ -225,7 +133,6 @@ static void print_line(struct VisualEditor *editor, const struct Line *line, con
         if (!line || !line->line || !strlen(line->line)) {
                 return;
         }
-        editor->current_line = line;
 
         const int line_number_field_len = determine_column_offset(line->line_number) - 1;
         if (line_number_field_len > line_number_field_length) {
@@ -256,6 +163,72 @@ static void reprint_screen(struct VisualEditor *editor) {
         screen_move_absolute(1, line_number_field_length + 1);
 }
 
+static bool cursor_can_move_dn(const struct VisualEditor *editor) {
+        if (check_line_exists(editor->file_editor, editor->cursor.row + 1)) {
+                return true;
+        }
+
+        return false;
+}
+
+static bool cursor_can_move_up(const struct VisualEditor *editor) {
+        if (editor->cursor.row - 1 > 0) {
+                return true;
+        }
+
+        return false;
+}
+
+static void visual_editor_move_dn(struct VisualEditor *editor) {
+        if (!cursor_can_move_dn(editor)) {
+                return;
+        }
+
+        editor->cursor.row += 1;
+
+        unsigned int next_line_index = editor->cursor.row - editor->top_line_number;
+        if (next_line_index > editor->lines_size - 1) {
+                save_line(editor->file_editor, editor->lines[0]);
+
+                visual_editor_scroll_dir_up(editor);
+
+                struct Line *line = get_line(editor->file_editor, editor->cursor.row);
+                editor->lines[editor->lines_size - 1] = line;
+
+                print_line(editor, line, false);
+
+                editor->top_line_number += 1;
+                next_line_index -= 1;
+        }
+
+        reprint_status_bar(editor);
+        screen_move_absolute(next_line_index + 1, line_number_field_length + 1);
+}
+
+static void visual_editor_move_up(struct VisualEditor *editor) {
+        if (!cursor_can_move_up(editor)) {
+                return;
+        }
+
+        editor->cursor.row -= 1;
+
+        int previous_line_index = editor->cursor.row - editor->top_line_number;
+        if (previous_line_index < 0) {
+                save_line(editor->file_editor, editor->lines[editor->lines_size - 1]);
+
+                visual_editor_scroll_dir_dn(editor);
+
+                struct Line *line = get_line(editor->file_editor, editor->cursor.row);
+                editor->lines[0] = line;
+
+                print_line(editor, editor->lines[0], false);
+                editor->top_line_number -= 1;
+                previous_line_index += 1;
+        }
+
+        reprint_status_bar(editor);
+        screen_move_absolute(previous_line_index + 1, line_number_field_length + 1);
+}
 
 int run_editor(int argc, char **argv) {
         if (argc < 2) {
@@ -278,12 +251,10 @@ int run_editor(int argc, char **argv) {
         screen_clear();
         printf("\x1b[1;%ir", lines_max); //set scrollable content
 
-        reprint_status_bar(editor);
         screen_move_home();
-        fetch_screen_at(editor, 1);
         reprint_screen(editor);
-        editor->current_line = editor->lines[0];
-        editor->top_line_number = 1;
+        reprint_status_bar(editor);
+        screen_move_absolute(1, line_number_field_length + 1);
 
         bool echo = false, canonical = false;
         ioctl(0, TTY_ECHO, &echo);
@@ -291,89 +262,56 @@ int run_editor(int argc, char **argv) {
         char c;
         while (read(0, &c, 1) > 0) {
                 switch (c) {
-                        case 'j': {
-                                unsigned int current_line_index =
-                                        editor->current_line->line_number - editor->top_line_number;
-
-                                if (current_line_index < editor->lines_size - 1) {
-                                        current_line_index += 1;
-                                        editor->current_line = editor->lines[current_line_index];
-                                }
-                                else {
-                                        if (!check_line_exists(editor->file_editor,
-                                                               editor->current_line->line_number + 1)) {
-                                                break;
-                                        }
-                                        fetch_screen_at(editor, editor->top_line_number + 1);
-                                        const struct Line *line = editor->lines[editor->lines_size - 1];
-                                        screen_scroll_dir_up();
-
-                                        print_line(editor, line, false);
-                                        editor->top_line_number += 1;
-                                        editor->current_line = line;
-                                }
-                                editor->cursor.row += 1;
-
-                                reprint_status_bar(editor);
-                                screen_move_absolute(current_line_index + 1, line_number_field_length + 1);
+                        case 'h': {
+                                //beware of line numbers, go to end of previous line if less than zero
+                                editor->cursor.col -= 1;
+                                //change cursor absolute position
                         }
                         break;
-                        case 'k': {
-                                if (editor->current_line->line_number == 1) {
-                                        break;
-                                }
-                                unsigned int current_line_index =
-                                        editor->current_line->line_number - editor->top_line_number;
-
-                                if (current_line_index > 0) {
-                                        current_line_index -= 1;
-                                        editor->current_line = editor->lines[current_line_index];
-                                }
-                                else {
-                                        screen_scroll_dir_down();
-
-                                        fetch_screen_at(editor, editor->top_line_number - 1);
-
-                                        printf("\x1b[H");
-                                        print_line(editor, editor->lines[0], false);
-                                        editor->top_line_number -= 1;
-                                        editor->current_line = editor->lines[0];
-                                }
-
-                                editor->cursor.row -= 1;
+                        case 'i': {
+                                editor->current_mode = INSERT;
                                 reprint_status_bar(editor);
-                                screen_move_absolute(current_line_index + 1, line_number_field_length + 1);
+                        }
+                        break;
+                        case 'j':
+                                visual_editor_move_dn(editor);
+                                break;
+                        case 'k':
+                                visual_editor_move_up(editor);
+                                break;
+                        case 'l': {
+                                //
                         }
                         break;
                         case 'H': {
                                 const unsigned int first_line_number = editor->top_line_number;
-                                const unsigned int column_offset = determine_column_offset(first_line_number);
 
                                 editor->cursor.row = first_line_number;
-                                editor->cursor.col = column_offset;
+                                editor->cursor.col = 1;
 
-                                screen_move_absolute(1, column_offset);
+                                reprint_status_bar(editor);
+                                screen_move_absolute(1, line_number_field_length + 1);
                         }
                         break;
                         case 'M': {
                                 const unsigned int middle_line_number =
                                         editor->top_line_number + editor->lines_size / 2;
-                                const unsigned int column_offset = determine_column_offset(middle_line_number);
 
                                 editor->cursor.row = middle_line_number;
-                                editor->cursor.col = column_offset;
+                                editor->cursor.col = 1;
 
-                                screen_move_absolute(middle_line_number, column_offset);
+                                reprint_status_bar(editor);
+                                screen_move_absolute(editor->lines_size / 2, line_number_field_length + 1);
                         }
                         break;
                         case 'L': {
                                 const unsigned int last_line_number = editor->top_line_number + editor->lines_size - 1;
-                                const unsigned int column_offset = determine_column_offset(last_line_number);
 
                                 editor->cursor.row = last_line_number;
-                                editor->cursor.col = column_offset;
+                                editor->cursor.col = 1;
 
-                                screen_move_absolute(editor->lines_size, column_offset);
+                                reprint_status_bar(editor);
+                                screen_move_absolute(editor->lines_size, line_number_field_length + 1);
                         }
                         break;
                         case ':':

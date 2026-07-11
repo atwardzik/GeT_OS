@@ -14,7 +14,7 @@ static void print_mode_color(const enum Mode mode) {
                         printf("\x1b[30;102m");
                         break;
                 case INSERT:
-                        printf("\x1b[30;104m");
+                        printf("\x1b[30;106m");
                         break;
                 case REPLACE:
                         printf("\x1b[30;101m");

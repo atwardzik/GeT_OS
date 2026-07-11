@@ -22,8 +22,6 @@ struct VisualEditor {
         struct Line **lines;
         unsigned int lines_size;
 
-        const struct Line *current_line;
-
         enum Mode current_mode;
 
         struct Line *cmd_line;
