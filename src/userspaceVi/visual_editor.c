@@ -68,6 +68,15 @@ static void free_visual_editor(struct VisualEditor **editor) {
         free(*editor);
 }
 
+static struct Line *visual_editor_get_current_line(struct VisualEditor *editor) {
+        const int current_line_index = editor->cursor.row - editor->top_line_number;
+        if (current_line_index < 0) {
+                return nullptr;
+        }
+
+        return editor->lines[current_line_index];
+}
+
 static void visual_editor_scroll_dir_up(const struct VisualEditor *editor) {
         unsigned int i = 0;
 
@@ -85,11 +94,12 @@ static void visual_editor_scroll_dir_up(const struct VisualEditor *editor) {
 }
 
 static void visual_editor_scroll_dir_dn(const struct VisualEditor *editor) {
+        const int current_screen_index = editor->cursor.row - editor->top_line_number;
         int i = editor->lines_size - 1;
 
-        while (i >= 0) {
+        while (i >= current_screen_index && i >= 0) {
                 const int prev_index = i - 1;
-                if (prev_index < editor->cursor.row - editor->top_line_number) {
+                if (prev_index == current_screen_index) {
                         editor->lines[i] = nullptr;
                 }
                 else {
@@ -201,8 +211,14 @@ static void visual_editor_move_dn(struct VisualEditor *editor) {
                 next_line_index -= 1;
         }
 
+        const struct Line *line = visual_editor_get_current_line(editor);
+        const size_t line_len = strlen(line->line);
+        if (editor->cursor.col > line_len) {
+                editor->cursor.col = line_len > 1 ? line_len - 1 : 1;
+        }
+
         reprint_status_bar(editor);
-        screen_move_absolute(next_line_index + 1, line_number_field_length + 1);
+        screen_move_absolute(next_line_index + 1, editor->cursor.col + line_number_field_length);
 }
 
 static void visual_editor_move_up(struct VisualEditor *editor) {
@@ -227,7 +243,44 @@ static void visual_editor_move_up(struct VisualEditor *editor) {
         }
 
         reprint_status_bar(editor);
-        screen_move_absolute(previous_line_index + 1, line_number_field_length + 1);
+        screen_move_absolute(previous_line_index + 1, editor->cursor.col + line_number_field_length);
+}
+
+
+void visual_editor_move_left(struct VisualEditor *editor) {
+        if (editor->cursor.col - 1 == 0) {
+                if (cursor_can_move_up(editor)) {
+                        visual_editor_move_up(editor);
+
+                        const struct Line *line = visual_editor_get_current_line(editor);
+                        const size_t line_len = strlen(line->line);
+                        editor->cursor.col = line_len > 1 ? line_len - 1 : 1;
+                }
+        }
+        else {
+                editor->cursor.col -= 1;
+        }
+        reprint_status_bar(editor);
+        screen_move_absolute(editor->cursor.row - editor->top_line_number + 1,
+                             editor->cursor.col + line_number_field_length);
+}
+
+void visual_editor_move_right(struct VisualEditor *editor) {
+        const struct Line *line = visual_editor_get_current_line(editor);
+        const size_t line_len = strlen(line->line);
+        if (editor->cursor.col + 1 >= line_len) {
+                if (cursor_can_move_dn(editor)) {
+                        visual_editor_move_dn(editor);
+
+                        editor->cursor.col = 1;
+                }
+        }
+        else {
+                editor->cursor.col += 1;
+        }
+        reprint_status_bar(editor);
+        screen_move_absolute(editor->cursor.row - editor->top_line_number + 1,
+                             editor->cursor.col + line_number_field_length);
 }
 
 int run_editor(int argc, char **argv) {
@@ -262,12 +315,9 @@ int run_editor(int argc, char **argv) {
         char c;
         while (read(0, &c, 1) > 0) {
                 switch (c) {
-                        case 'h': {
-                                //beware of line numbers, go to end of previous line if less than zero
-                                editor->cursor.col -= 1;
-                                //change cursor absolute position
-                        }
-                        break;
+                        case 'h':
+                                visual_editor_move_left(editor);
+                                break;
                         case 'i': {
                                 editor->current_mode = INSERT;
                                 reprint_status_bar(editor);
@@ -279,10 +329,9 @@ int run_editor(int argc, char **argv) {
                         case 'k':
                                 visual_editor_move_up(editor);
                                 break;
-                        case 'l': {
-                                //
-                        }
-                        break;
+                        case 'l':
+                                visual_editor_move_right(editor);
+                                break;
                         case 'H': {
                                 const unsigned int first_line_number = editor->top_line_number;
 
