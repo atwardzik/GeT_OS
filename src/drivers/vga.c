@@ -341,11 +341,11 @@ void vga_xor_cursor() {
         const auto row_position = cursor_row_position * FONT_HEIGHT + cursor_row_position;
         const auto col_position = cursor_column_position * FONT_WIDTH;
         if (cursor_on) {
-                vga_put_pixel_map(&current_cursor_map, row_position, col_position);
+                vga_put_pixel_map(&current_pixels_under_cursor_map, row_position, col_position);
                 cursor_on = false;
         }
         else {
-                vga_put_pixel_map(&current_pixels_under_cursor_map, row_position, col_position);
+                vga_put_pixel_map(&current_cursor_map, row_position, col_position);
                 cursor_on = true;
         }
 }
