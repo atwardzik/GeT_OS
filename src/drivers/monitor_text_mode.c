@@ -33,7 +33,7 @@ static struct {
         struct CharBuffer *buffer;
 } ScreenWriter = {
         0, 0,
-        0, BUFFER_HEIGHT,
+        0, BUFFER_HEIGHT - 1,
         (BLACK << 4 | WHITE),
         (struct CharBuffer *) screen_buffer_ptr
 };
@@ -216,9 +216,11 @@ static void write_with_line_overflow_if_needed(const char c) {
                                           ScreenWriter.current_column_position,
                                           ScreenWriter.current_color_code);
 
-        ScreenWriter.current_column_position += 1;
-        if (ScreenWriter.current_column_position == BUFFER_WIDTH) {
+        if (ScreenWriter.current_column_position + 1 == BUFFER_WIDTH) {
                 write_new_line();
+        }
+        else {
+                ScreenWriter.current_column_position += 1;
         }
 }
 

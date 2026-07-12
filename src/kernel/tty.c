@@ -165,7 +165,7 @@ static void handle_ascii_control_character(int c) {
                 handle_newline_character();
         }
         else {
-                insert_byte(c);
+                insert_and_shift(c, keyboard_buffer_current_position, keyboard_buffer_final_length + 1);
                 keyboard_buffer_final_length += 1;
                 keyboard_buffer_current_position += 1;
         }
