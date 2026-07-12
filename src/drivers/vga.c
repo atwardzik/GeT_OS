@@ -263,8 +263,28 @@ static PhysicalColor current_cursor_background_color = PHYSICAL_BLACK;
 static uint8_t current_letter_under_cursor[8][8] = {};
 static struct PixelMap current_pixels_under_cursor_map = {(uint8_t *) current_letter_under_cursor, 8, 8};
 
+enum VGACursorShape current_cursor_shape = BLOCK;
 static uint8_t current_cursor[8][8] = {};
 static struct PixelMap current_cursor_map = {(uint8_t *) current_cursor, 8, 8};
+
+static void vga_update_cursor_pixel(const uint8_t current_pixel_code, const int i, const int j) {
+        if (current_cursor_shape == BAR && j > 0) {
+                current_cursor[i][j] = current_pixel_code;
+                return;
+        }
+
+        if (current_cursor_shape == UNDERLINE && i < 7) {
+                current_cursor[i][j] = current_pixel_code;
+                return;
+        }
+
+        if (current_pixel_code) {
+                current_cursor[i][j] = PHYSICAL_BLACK;
+        }
+        else {
+                current_cursor[i][j] = PHYSICAL_WHITE;
+        }
+}
 
 static void vga_determine_letter_under_cursor() {
         unsigned int row_letter_position = cursor_row_position;
@@ -283,12 +303,7 @@ static void vga_determine_letter_under_cursor() {
 
                         current_letter_under_cursor[i][j] = current_pixel_code;
 
-                        if (current_pixel_code) {
-                                current_cursor[i][j] = PHYSICAL_BLACK;
-                        }
-                        else {
-                                current_cursor[i][j] = PHYSICAL_WHITE;
-                        }
+                        vga_update_cursor_pixel(current_pixel_code, i, j);
                 }
         }
 }
@@ -335,6 +350,22 @@ void vga_update_cursor_color(const ByteColorCode color_code) {
 
         current_cursor_foreground_color = foreground_color;
         current_cursor_background_color = background_color;
+}
+
+void vga_change_cursor_shape(const enum VGACursorShape shape) {
+        vga_clr_cursor();
+
+        switch (shape) {
+                case BLOCK:
+                case UNDERLINE:
+                        current_cursor_shape = shape;
+                        break;
+                default:
+                        current_cursor_shape = BLOCK;
+                        break;
+        }
+
+        vga_determine_letter_under_cursor();
 }
 
 void vga_xor_cursor() {

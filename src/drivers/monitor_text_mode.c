@@ -295,7 +295,7 @@ static void clear_screen(void) {
 
 static void parse_arguments(const int c, const uint8_t *escape_sequence, param_t *left, param_t *right) {
         const char action[2] = {(char) c, 0};
-        const int param_splitter = strcspn(escape_sequence, ";");
+        const int param_splitter = strcspn(escape_sequence, "; ");
         const int action_code = strcspn(escape_sequence, action);
 
         left->present = false;
@@ -351,6 +351,9 @@ int handle_escape_sequence(uint8_t *escape_sequence, size_t *escape_sequence_pos
         }
         else if (c == 'r') {
                 define_scrolling_area(&left, &right);
+        }
+        else if (c == 'q' && left.present) {
+                vga_change_cursor_shape(left.val);
         }
 
         *escape_sequence_position = 0;

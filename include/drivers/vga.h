@@ -51,6 +51,14 @@ void vga_update_cursor_position(unsigned int row, unsigned int column);
 
 void vga_update_cursor_color(ByteColorCode color_code);
 
+enum VGACursorShape {
+        BLOCK     = 1,
+        UNDERLINE = 4,
+        BAR       = 6,
+};
+
+void vga_change_cursor_shape(enum VGACursorShape shape);
+
 extern void vga_set_cursor_off(void);
 
 void vga_xor_cursor(void);
