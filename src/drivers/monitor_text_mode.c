@@ -96,6 +96,8 @@ static void scroll_vertical_dir_up() {
                                                   prev_color_code
                 );
         }
+
+        vga_update_cursor_position(ScreenWriter.current_row_position, ScreenWriter.current_column_position);
 }
 
 static void scroll_vertical_dir_dn() {
@@ -127,6 +129,8 @@ static void scroll_vertical_dir_dn() {
                                                   prev_color_code
                 );
         }
+
+        vga_update_cursor_position(ScreenWriter.current_row_position, ScreenWriter.current_column_position);
 }
 
 static void scroll_horizontal_right(unsigned int row_position, unsigned int column_position) {
