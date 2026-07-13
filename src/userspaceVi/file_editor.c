@@ -193,9 +193,9 @@ static ssize_t readline(int fd, char **line_ptr, size_t *line_cap) {
         return 0;
 }
 
-struct Line *get_file_line(const struct FileEditor *editor, const unsigned int line_number) {
+int get_file_line(const struct FileEditor *editor, const unsigned int line_number, struct Line *line) {
         if (editor->lines[line_number].location == NONE) {
-                return nullptr;
+                return -1;
         }
         const int destfd = editor->lines[line_number].location == FILE_OG ? editor->fd : editor->fdbak;
         lseek(destfd, editor->lines[line_number].file_offset, SEEK_SET);
@@ -204,13 +204,9 @@ struct Line *get_file_line(const struct FileEditor *editor, const unsigned int l
         size_t line_cap = 0;
         readline(destfd, &line_str, &line_cap);
         if (!line_str) {
-                return nullptr;
+                return -1;
         }
 
-        struct Line *line = malloc(sizeof(*line));
-        if (!line) {
-                return nullptr;
-        }
         *line = (struct Line){
                 .line_number = line_number,
                 .edited = editor->lines[line_number].location == FILE_OG ? false : true,
@@ -218,8 +214,10 @@ struct Line *get_file_line(const struct FileEditor *editor, const unsigned int l
                 .linecap = line_cap
         };
 
-        return line;
+        return 0;
 }
+
+int get_file_lines(struct FileEditor *editor, unsigned int line_number, unsigned int line_count, struct Line **lines) {}
 
 struct Line *new_line_at(struct FileEditor *editor, int line_number) {}
 

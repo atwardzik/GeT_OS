@@ -19,7 +19,7 @@ struct VisualEditor {
 
         unsigned int top_line_number;
 
-        struct Line **lines;
+        struct Line *lines;
         unsigned int lines_size;
 
         enum Mode current_mode;

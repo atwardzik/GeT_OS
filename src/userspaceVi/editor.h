@@ -15,11 +15,6 @@ struct Line {
         bool edited;
 };
 
-static inline void free_line(struct Line *line) {
-        free(line->line);
-        free(line);
-}
-
 enum Mode {
         NORMAL,
         INSERT,
