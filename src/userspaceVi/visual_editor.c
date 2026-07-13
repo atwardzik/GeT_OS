@@ -38,9 +38,6 @@ static struct VisualEditor *create_visual_editor(const unsigned int lines_max, c
                 return nullptr;
         }
         get_file_lines(file_editor, 1, lines_max, &editor->lines[0]);
-        // for (int i = 0; i < lines_max; ++i) {
-        //         get_file_line(file_editor, i + 1, &editor->lines[i]); //FIXME: get multiple lines
-        // }
 
         editor->lines_size = lines_max;
         editor->top_line_number = 1;
@@ -169,8 +166,10 @@ static void reprint_screen(struct VisualEditor *editor) {
 
 
 static void visual_editor_scroll_dir_up(struct VisualEditor *editor, const unsigned int count) {
-        save_line(editor->file_editor, &editor->lines[0]);
-        free(editor->lines[0].line);
+        for (int i = 0; i < count; ++i) {
+                save_line(editor->file_editor, &editor->lines[i]);
+                free(editor->lines[i].line);
+        }
 
         unsigned int i = 0;
         while (i <= editor->cursor.row) {
@@ -200,8 +199,10 @@ static void visual_editor_scroll_dir_up(struct VisualEditor *editor, const unsig
 }
 
 static void visual_editor_scroll_dir_dn(struct VisualEditor *editor, const unsigned int count) {
-        save_line(editor->file_editor, &editor->lines[editor->lines_size - 1]);
-        free(editor->lines[editor->lines_size - 1].line);
+        for (int i = 0; i < count; ++i) {
+                save_line(editor->file_editor, &editor->lines[editor->lines_size - 1 - i]);
+                free(editor->lines[editor->lines_size - 1 - i].line);
+        }
 
         const int current_screen_index = editor->cursor.row - editor->top_line_number;
         int i = editor->lines_size - 1;

@@ -105,6 +105,7 @@ static void scroll_vertical_dir_up(const unsigned int count) {
         }
 
         vga_update_cursor_position(ScreenWriter.current_row_position, ScreenWriter.current_column_position);
+        vga_clr_cursor();
 }
 
 static void scroll_vertical_dir_dn(const unsigned int count) {
@@ -145,6 +146,7 @@ static void scroll_vertical_dir_dn(const unsigned int count) {
         }
 
         vga_update_cursor_position(ScreenWriter.current_row_position, ScreenWriter.current_column_position);
+        vga_clr_cursor();
 }
 
 static void scroll_horizontal_right(unsigned int row_position, unsigned int column_position) {

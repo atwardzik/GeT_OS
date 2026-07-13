@@ -598,7 +598,7 @@ vsync_gen:
 #endif
 
 .section .vidram, "wa"
-.incbin "images/logo_flash.raw"
+.incbin "images/logo_flash_name.raw"
 
 .section .data
 cursor_blink_time:      .word 0
