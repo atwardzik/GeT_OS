@@ -68,22 +68,29 @@ static void save_char_to_buffer(const char c) {
         ScreenWriter.buffer->chars[row][col] = ch;
 }
 
-static void scroll_vertical_dir_up() {
+static void scroll_vertical_dir_up(const unsigned int count) {
         vga_clr_cursor();
 
         const int scrollable_area_bottom = ScreenWriter.scrollable_area_bottom;
+        const struct SingleChar empty_char = {0x00, ScreenWriter.current_color_code};
 
-        for (size_t i = ScreenWriter.scrollable_area_top + 1; i <= scrollable_area_bottom; ++i) {
+        for (size_t i = ScreenWriter.scrollable_area_top; i < scrollable_area_bottom; ++i) {
                 for (size_t j = 0; j < BUFFER_WIDTH; ++j) {
-                        ScreenWriter.buffer->chars[i - 1][j] = ScreenWriter.buffer->chars[i][j];
-                        vga_put_byte_encoded_color_letter(ScreenWriter.buffer->chars[i - 1][j].ascii_code,
-                                                          i - 1, j,
-                                                          ScreenWriter.buffer->chars[i - 1][j].color_code
+                        struct SingleChar shifted_char = {};
+                        if (i + count > scrollable_area_bottom) {
+                                shifted_char = empty_char;
+                        }
+                        else {
+                                shifted_char = ScreenWriter.buffer->chars[i + count][j];
+                        }
+                        ScreenWriter.buffer->chars[i][j] = shifted_char;
+                        vga_put_byte_encoded_color_letter(ScreenWriter.buffer->chars[i][j].ascii_code,
+                                                          i, j,
+                                                          shifted_char.color_code
                         );
                 }
         }
 
-        const struct SingleChar empty_char = {0x00, ScreenWriter.current_color_code};
 
         const ByteColorCode prev_color_code = ScreenWriter.buffer->chars[scrollable_area_bottom - 1][BUFFER_WIDTH - 1].
                 color_code;
@@ -200,7 +207,7 @@ static void write_new_line() {
         save_char_to_buffer(ENDL);
 
         if (ScreenWriter.current_row_position == ScreenWriter.scrollable_area_bottom) {
-                scroll_vertical_dir_up();
+                scroll_vertical_dir_up(1);
         }
         else {
                 ScreenWriter.current_row_position += 1;
@@ -339,8 +346,11 @@ int handle_escape_sequence(uint8_t *escape_sequence, size_t *escape_sequence_pos
         else if (c == 'H') {
                 move_cursor_absolute(&left, &right);
         }
-        else if (c == 'S') {
-                scroll_vertical_dir_up();
+        else if (c == 'S' && !left.present) {
+                scroll_vertical_dir_up(1);
+        }
+        else if (c == 'S' && left.present) {
+                scroll_vertical_dir_up(left.val);
         }
         else if (c == 'T') {
                 scroll_vertical_dir_dn();
