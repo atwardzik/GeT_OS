@@ -530,6 +530,35 @@ static struct Cursor visual_editor_get_move_half_page_up(const struct VisualEdit
         return cursor;
 }
 
+typedef struct Cursor (*cursor_movement_fn)(const struct VisualEditor *);
+
+struct Movement {
+        char letter;
+        cursor_movement_fn fn;
+};
+
+static const struct Movement movements[] = {
+        {'0', visual_editor_get_move_current_line_begin},
+        {'$', visual_editor_get_move_current_line_end},
+        {'_', visual_editor_get_move_first_line_word},
+
+        {'w', visual_editor_get_move_next_word},
+        {'W', visual_editor_get_move_next_WORD},
+        {'b', visual_editor_get_move_previous_word},
+
+        {'h', visual_editor_get_move_left},
+        {'j', visual_editor_get_move_dn},
+        {'k', visual_editor_get_move_up},
+        {'l', visual_editor_get_move_right},
+
+        {'H', visual_editor_get_move_home},
+        {'M', visual_editor_get_move_middle},
+        {'L', visual_editor_get_move_end},
+
+        {CTRL_KEY('d'), visual_editor_get_move_half_page_dn},
+        {CTRL_KEY('u'), visual_editor_get_move_half_page_up},
+};
+
 int run_editor(int argc, char **argv) {
         if (argc < 2) {
                 dprintf(2, "[!] Not enough parameters supplied.");
@@ -563,70 +592,33 @@ int run_editor(int argc, char **argv) {
         ioctl(0, TTY_CANONICAL, &canonical);
         char c;
         while (read(0, &c, 1) > 0) {
-                //below are editor moves only
                 struct Cursor cursor_new = editor->cursor;
-                switch (c) {
-                        case '0':
-                                cursor_new = visual_editor_get_move_current_line_begin(editor);
-                                break;
-                        case '$':
-                                cursor_new = visual_editor_get_move_current_line_end(editor);
-                                break;
-                        case '_':
-                                cursor_new = visual_editor_get_move_first_line_word(editor);
-                                break;
-                        case 'w':
-                                cursor_new = visual_editor_get_move_next_word(editor);
-                                break;
-                        case 'W':
-                                cursor_new = visual_editor_get_move_next_WORD(editor);
-                                break;
-                        case 'b':
-                                cursor_new = visual_editor_get_move_previous_word(editor);
-                                break;
-                        case 'h':
-                                cursor_new = visual_editor_get_move_left(editor);
-                                break;
-                        case 'i':
-                                editor->current_mode = INSERT;
-                                printf("\x1b[4 q");
-                                break;
-                        case 'j':
-                                cursor_new = visual_editor_get_move_dn(editor);
-                                break;
-                        case 'k':
-                                cursor_new = visual_editor_get_move_up(editor);
-                                break;
-                        case 'l':
-                                cursor_new = visual_editor_get_move_right(editor);
-                                break;
-                        case 'H':
-                                cursor_new = visual_editor_get_move_home(editor);
-                                break;
-                        case 'M':
-                                cursor_new = visual_editor_get_move_middle(editor);
-                                break;
-                        case 'L':
-                                cursor_new = visual_editor_get_move_end(editor);
-                                break;
-                        case CTRL_KEY('d'):
-                                cursor_new = visual_editor_get_move_half_page_dn(editor);
-                                break;
-                        case CTRL_KEY('u'):
-                                cursor_new = visual_editor_get_move_half_page_up(editor);
-                                break;
-                        case ':': //FIXME: should not be in this switch
-                                printf("\x1b[40;1H");
-                                printf(":");
-                                break;
-                        case '\x1b':
-                                editor->current_mode = NORMAL;
-                                printf("\x1b[1 q");
-                                break;
-                        default:
-                                break;
+                if (c == 'q') {
+                        return 0;
                 }
-
+                else if (c == ':') {
+                        printf("\x1b[40;1H");
+                        printf(":");
+                        cursor_new.row = 40;
+                        cursor_new.col = 2;
+                }
+                else if (c == 'i') {
+                        editor->current_mode = INSERT;
+                        printf("\x1b[4 q");
+                }
+                else if (c == '\x1b') {
+                        //this will be quite complex...
+                        editor->current_mode = NORMAL;
+                        printf("\x1b[1 q");
+                }
+                else {
+                        //below are editor moves only
+                        for (int i = 0; i < sizeof(movements) / sizeof(movements[0]); ++i) {
+                                if (c == movements[i].letter) {
+                                        cursor_new = movements[i].fn(editor);
+                                }
+                        }
+                }
 
                 int next_line_index = cursor_new.row - editor->top_line_number;
                 while (next_line_index < 0 || next_line_index >= editor->lines_size) {
