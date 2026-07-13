@@ -15,7 +15,7 @@ void screen_move_to_col(unsigned int x);
 
 void screen_clear(void);
 
-void screen_scroll_dir_up(void);
+void screen_scroll_dir_up(int count);
 
 void screen_scroll_dir_dn(void);
 

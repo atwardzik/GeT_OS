@@ -15,7 +15,7 @@ struct Cursor {
 
 struct VisualEditor {
         const char *filename;
-        const struct FileEditor *file_editor;
+        struct FileEditor *file_editor;
 
         unsigned int top_line_number;
 

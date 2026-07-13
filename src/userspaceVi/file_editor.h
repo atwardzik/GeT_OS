@@ -17,7 +17,7 @@ void free_file_editor(struct FileEditor **editor);
 
 int get_file_line(const struct FileEditor *editor, unsigned int line_number, struct Line *line);
 
-int get_file_lines(struct FileEditor *editor, unsigned int line_number, unsigned int line_count, struct Line **lines);
+int get_file_lines(const struct FileEditor *editor, unsigned int line_number, unsigned int line_count, struct Line *lines);
 
 struct Line *new_line_at(struct FileEditor *editor, int line_number);
 

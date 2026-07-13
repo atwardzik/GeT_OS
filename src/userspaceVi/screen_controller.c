@@ -26,8 +26,8 @@ void screen_clear(void) {
         printf("\x1b[2J");
 }
 
-void screen_scroll_dir_up(void) {
-        printf("\x1b[S");
+void screen_scroll_dir_up(const int count) {
+        printf("\x1b[%iS", count);
 }
 
 void screen_scroll_dir_dn(void) {
