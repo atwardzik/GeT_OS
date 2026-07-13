@@ -245,6 +245,7 @@ void sys_free(void *ptr) {
         }
         struct Process *current_process = scheduler_get_current_process();
 
+#if 0
         for (size_t i = 0; i < 4; ++i) {
                 if (current_process->heap_pages[i] != ptr) {
                         continue;
@@ -258,6 +259,11 @@ void sys_free(void *ptr) {
                 current_process->allocated_memory -= size_before - size_after;
                 break;
         }
+#endif
+        const size_t size_before = Allocator.allocated_size;
+        kfree(ptr);
+        const size_t size_after = Allocator.allocated_size;
+        current_process->allocated_memory -= size_before - size_after;
 }
 
 size_t get_allocated_size(void) {
