@@ -199,7 +199,7 @@ static void visual_editor_scroll_dir_up(struct VisualEditor *editor, const unsig
         }
 }
 
-static void visual_editor_scroll_dir_dn(struct VisualEditor *editor) {
+static void visual_editor_scroll_dir_dn(struct VisualEditor *editor, const unsigned int count) {
         save_line(editor->file_editor, &editor->lines[editor->lines_size - 1]);
         free(editor->lines[editor->lines_size - 1].line);
 
@@ -207,8 +207,8 @@ static void visual_editor_scroll_dir_dn(struct VisualEditor *editor) {
         int i = editor->lines_size - 1;
 
         while (i >= current_screen_index && i >= 0) {
-                const int prev_index = i - 1;
-                if (prev_index == current_screen_index) {
+                const int prev_index = i - count;
+                if (prev_index <= current_screen_index) {
                         editor->lines[i].line = nullptr;
                 }
                 else {
@@ -217,16 +217,21 @@ static void visual_editor_scroll_dir_dn(struct VisualEditor *editor) {
 
                 i -= 1;
         }
-        editor->top_line_number -= 1;
+        editor->top_line_number -= count;
 
-        screen_scroll_dir_dn();
+        screen_scroll_dir_dn(count);
 
-        struct Line line = {};
-        get_file_line(editor->file_editor, editor->cursor.row, &line);
-        const int line_screen_index = editor->cursor.row - editor->top_line_number;
-        editor->lines[line_screen_index] = line;
-        screen_move_absolute(line_screen_index + 1, 1);
-        print_line(editor, &line, false);
+        struct Line lines[count];
+        get_file_lines(editor->file_editor, editor->cursor.row - count + 1, count, lines);
+
+        struct Cursor cursor = editor->cursor;
+        for (int j = 0; j < count; ++j) {
+                const int line_screen_index = cursor.row - editor->top_line_number;
+                editor->lines[line_screen_index] = lines[line_screen_index];
+                screen_move_absolute(line_screen_index + 1, 1);
+                print_line(editor, &lines[line_screen_index], false);
+                cursor.row -= 1;
+        }
 }
 
 static bool cursor_can_move_dn(
@@ -626,7 +631,8 @@ int run_editor(int argc, char **argv) {
                 while (next_line_index < 0 || next_line_index >= editor->lines_size) {
                         if (next_line_index < 0) {
                                 editor->cursor.row = editor->top_line_number - 1;
-                                visual_editor_scroll_dir_dn(editor);
+                                const int lines_to_scroll = abs(cursor_new.row - (editor->cursor.row + 1));
+                                visual_editor_scroll_dir_dn(editor, lines_to_scroll);
                         }
                         else {
                                 editor->cursor.row = editor->top_line_number + editor->lines_size;

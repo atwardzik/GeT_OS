@@ -30,8 +30,8 @@ void screen_scroll_dir_up(const int count) {
         printf("\x1b[%iS", count);
 }
 
-void screen_scroll_dir_dn(void) {
-        printf("\x1b[T");
+void screen_scroll_dir_dn(const int count) {
+        printf("\x1b[%iT", count);
 }
 
 void highlight(const char *pattern) {}

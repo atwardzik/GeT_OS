@@ -17,7 +17,7 @@ void screen_clear(void);
 
 void screen_scroll_dir_up(int count);
 
-void screen_scroll_dir_dn(void);
+void screen_scroll_dir_dn(int count);
 
 void highlight(const char *pattern);
 
