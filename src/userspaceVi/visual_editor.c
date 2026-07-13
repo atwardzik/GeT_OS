@@ -68,7 +68,7 @@ static void free_visual_editor(struct VisualEditor **editor) {
         free(*editor);
 }
 
-static struct Line *visual_editor_get_current_line(struct VisualEditor *editor) {
+static struct Line *visual_editor_get_current_line(const struct VisualEditor *editor) {
         const int current_line_index = editor->cursor.row - editor->top_line_number;
         if (current_line_index < 0) {
                 return nullptr;
@@ -77,40 +77,6 @@ static struct Line *visual_editor_get_current_line(struct VisualEditor *editor) 
         return editor->lines[current_line_index];
 }
 
-static void visual_editor_scroll_dir_up(const struct VisualEditor *editor) {
-        unsigned int i = 0;
-
-        while (i <= editor->cursor.row) {
-                const unsigned int prev_index = i + 1;
-                if (prev_index > editor->lines_size - 1) {
-                        break;
-                }
-
-                editor->lines[i] = editor->lines[prev_index];
-                i += 1;
-        }
-
-        screen_scroll_dir_up();
-}
-
-static void visual_editor_scroll_dir_dn(const struct VisualEditor *editor) {
-        const int current_screen_index = editor->cursor.row - editor->top_line_number;
-        int i = editor->lines_size - 1;
-
-        while (i >= current_screen_index && i >= 0) {
-                const int prev_index = i - 1;
-                if (prev_index == current_screen_index) {
-                        editor->lines[i] = nullptr;
-                }
-                else {
-                        editor->lines[i] = editor->lines[prev_index];
-                }
-
-                i -= 1;
-        }
-
-        screen_scroll_dir_dn();
-}
 
 static int determine_column_offset(unsigned int line_number) {
         int column_offset = 1;
@@ -122,7 +88,6 @@ static int determine_column_offset(unsigned int line_number) {
 
         return column_offset;
 }
-
 
 static int line_number_field_length = 3;
 
@@ -173,6 +138,57 @@ static void reprint_screen(struct VisualEditor *editor) {
         screen_move_absolute(1, line_number_field_length + 1);
 }
 
+
+static void visual_editor_scroll_dir_up(struct VisualEditor *editor) {
+        save_line(editor->file_editor, editor->lines[0]);
+
+        unsigned int i = 0;
+        while (i <= editor->cursor.row) {
+                const unsigned int prev_index = i + 1;
+                if (prev_index > editor->lines_size - 1) {
+                        break;
+                }
+
+                editor->lines[i] = editor->lines[prev_index];
+                i += 1;
+        }
+        editor->top_line_number += 1;
+
+        screen_scroll_dir_up();
+
+        struct Line *line = get_line(editor->file_editor, editor->cursor.row);
+        const int line_screen_index = editor->cursor.row - editor->top_line_number;
+        editor->lines[line_screen_index] = line;
+        print_line(editor, line, false);
+}
+
+static void visual_editor_scroll_dir_dn(struct VisualEditor *editor) {
+        save_line(editor->file_editor, editor->lines[editor->lines_size - 1]);
+
+        const int current_screen_index = editor->cursor.row - editor->top_line_number;
+        int i = editor->lines_size - 1;
+
+        while (i >= current_screen_index && i >= 0) {
+                const int prev_index = i - 1;
+                if (prev_index == current_screen_index) {
+                        editor->lines[i] = nullptr;
+                }
+                else {
+                        editor->lines[i] = editor->lines[prev_index];
+                }
+
+                i -= 1;
+        }
+        editor->top_line_number -= 1;
+
+        screen_scroll_dir_dn();
+
+        struct Line *line = get_line(editor->file_editor, editor->cursor.row);
+        const int line_screen_index = editor->cursor.row - editor->top_line_number;
+        editor->lines[line_screen_index] = line;
+        print_line(editor, line, false);
+}
+
 static bool cursor_can_move_dn(const struct VisualEditor *editor) {
         if (check_line_exists(editor->file_editor, editor->cursor.row + 1)) {
                 return true;
@@ -189,131 +205,136 @@ static bool cursor_can_move_up(const struct VisualEditor *editor) {
         return false;
 }
 
-static void visual_editor_move_dn(struct VisualEditor *editor) {
+static struct Cursor visual_editor_get_move_dn(const struct VisualEditor *editor) {
         if (!cursor_can_move_dn(editor)) {
-                return;
+                return editor->cursor;
         }
 
-        editor->cursor.row += 1;
+        struct Cursor cursor = editor->cursor;
+        cursor.row += 1;
 
-        unsigned int next_line_index = editor->cursor.row - editor->top_line_number;
-        if (next_line_index > editor->lines_size - 1) {
-                save_line(editor->file_editor, editor->lines[0]);
-
-                visual_editor_scroll_dir_up(editor);
-
-                struct Line *line = get_line(editor->file_editor, editor->cursor.row);
-                editor->lines[editor->lines_size - 1] = line;
-
-                print_line(editor, line, false);
-
-                editor->top_line_number += 1;
-                next_line_index -= 1;
-        }
-
-        const struct Line *line = visual_editor_get_current_line(editor);
+        struct Line *line = get_line(editor->file_editor, cursor.row);
         const size_t line_len = strlen(line->line);
-        if (editor->cursor.col > line_len) {
-                editor->cursor.col = line_len > 1 ? line_len - 1 : 1;
+        if (cursor.col > line_len) {
+                cursor.col = line_len > 1 ? line_len - 1 : 1;
         }
+        free_line(line);
+
+        return cursor;
 }
 
-static void visual_editor_move_up(struct VisualEditor *editor) {
+static struct Cursor visual_editor_get_move_up(const struct VisualEditor *editor) {
         if (!cursor_can_move_up(editor)) {
-                return;
+                return editor->cursor;
         }
 
-        editor->cursor.row -= 1;
+        struct Cursor cursor = editor->cursor;
+        cursor.row -= 1;
 
-        int previous_line_index = editor->cursor.row - editor->top_line_number;
-        if (previous_line_index < 0) {
-                save_line(editor->file_editor, editor->lines[editor->lines_size - 1]);
-
-                visual_editor_scroll_dir_dn(editor);
-
-                struct Line *line = get_line(editor->file_editor, editor->cursor.row);
-                editor->lines[0] = line;
-
-                print_line(editor, editor->lines[0], false);
-                editor->top_line_number -= 1;
-                previous_line_index += 1;
-        }
-
-        const struct Line *line = visual_editor_get_current_line(editor);
+        struct Line *line = get_line(editor->file_editor, cursor.row);
         const size_t line_len = strlen(line->line);
-        if (editor->cursor.col > line_len) {
-                editor->cursor.col = line_len > 1 ? line_len - 1 : 1;
+        if (cursor.col > line_len) {
+                cursor.col = line_len > 1 ? line_len - 1 : 1;
         }
+        free_line(line);
+
+        return cursor;
 }
 
 
-static void visual_editor_move_left(struct VisualEditor *editor) {
-        if (editor->cursor.col - 1 == 0) {
+static struct Cursor visual_editor_get_move_left(const struct VisualEditor *editor) {
+        struct Cursor cursor = editor->cursor;
+
+        if (cursor.col - 1 == 0) {
                 if (cursor_can_move_up(editor)) {
-                        visual_editor_move_up(editor);
+                        cursor.row -= 1;
 
-                        const struct Line *line = visual_editor_get_current_line(editor);
+                        struct Line *line = get_line(editor->file_editor, cursor.row);
                         const size_t line_len = strlen(line->line);
-                        editor->cursor.col = line_len > 1 ? line_len - 1 : 1;
+
+                        cursor.col = line_len > 1 ? line_len - 1 : 1;
+                        free_line(line);
                 }
         }
         else {
-                editor->cursor.col -= 1;
+                cursor.col -= 1;
         }
+
+        return cursor;
 }
 
-static void visual_editor_move_right(struct VisualEditor *editor) {
+static struct Cursor visual_editor_get_move_right(const struct VisualEditor *editor) {
+        struct Cursor cursor = editor->cursor;
+
         const struct Line *line = visual_editor_get_current_line(editor);
         const size_t line_len = strlen(line->line);
-        if (editor->cursor.col + 1 >= line_len) {
+        if (cursor.col + 1 >= line_len) {
                 if (cursor_can_move_dn(editor)) {
-                        visual_editor_move_dn(editor);
-
-                        editor->cursor.col = 1;
+                        cursor.row += 1;
+                        cursor.col = 1;
                 }
         }
         else {
-                editor->cursor.col += 1;
+                cursor.col += 1;
         }
+
+        return cursor;
 }
 
-static void visual_editor_move_home(struct VisualEditor *editor) {
-        const unsigned int first_line_number = editor->top_line_number;
+static struct Cursor visual_editor_get_move_home(const struct VisualEditor *editor) {
+        struct Cursor cursor = editor->cursor;
 
-        editor->cursor.row = first_line_number;
-        editor->cursor.col = 1;
+        cursor.row = editor->top_line_number;
+        cursor.col = 1;
+
+        return cursor;
 }
 
-static void visual_editor_move_middle(struct VisualEditor *editor) {
-        const unsigned int middle_line_number =
-                editor->top_line_number + editor->lines_size / 2;
+static struct Cursor visual_editor_get_move_middle(const struct VisualEditor *editor) {
+        struct Cursor cursor = editor->cursor;
 
-        editor->cursor.row = middle_line_number;
-        editor->cursor.col = 1;
+        cursor.row = editor->top_line_number + editor->lines_size / 2;
+        cursor.col = 1;
+
+        return cursor;
 }
 
-static void visual_editor_move_end(struct VisualEditor *editor) {
-        const unsigned int last_line_number = editor->top_line_number + editor->lines_size - 1;
+static struct Cursor visual_editor_get_move_end(const struct VisualEditor *editor) {
+        struct Cursor cursor = editor->cursor;
 
-        editor->cursor.row = last_line_number;
-        editor->cursor.col = 1;
+        cursor.row = editor->top_line_number + editor->lines_size - 1;
+        cursor.col = 1;
+
+        return cursor;
 }
 
-static void visual_editor_move_current_line_begin(struct VisualEditor *editor) {
-        editor->cursor.col = 1;
+static struct Cursor visual_editor_get_move_current_line_begin(const struct VisualEditor *editor) {
+        struct Cursor cursor = editor->cursor;
+
+        cursor.col = 1;
+
+        return cursor;
 }
 
-static void visual_editor_move_current_line_end(struct VisualEditor *editor) {
+static struct Cursor visual_editor_get_move_current_line_end(const struct VisualEditor *editor) {
+        struct Cursor cursor = editor->cursor;
+
         const struct Line *line = visual_editor_get_current_line(editor);
         const size_t line_len = strlen(line->line);
 
-        editor->cursor.col = line_len > 1 ? line_len - 1 : 1;
+        cursor.col = line_len > 1 ? line_len - 1 : 1;
+
+        return cursor;
 }
 
-static void visual_editor_move_first_line_word(struct VisualEditor *editor) {
+static struct Cursor visual_editor_get_move_first_line_word(const struct VisualEditor *editor) {
+        struct Cursor cursor = editor->cursor;
+
         const struct Line *line = visual_editor_get_current_line(editor);
 
-        editor->cursor.col = line->line[0] != '\n' ? strspn(line->line, "\t ") + 1 : 1;
+        cursor.col = line->line[0] != '\n' ? strspn(line->line, "\t ") + 1 : 1;
+
+        return cursor;
 }
 
 /*
@@ -329,25 +350,29 @@ static void visual_editor_move_first_line_word(struct VisualEditor *editor) {
  * space.  An empty line is also considered to be a WORD.
  */
 
-static void visual_editor_move_next_WORD(struct VisualEditor *editor) {
-        const struct Line *line = visual_editor_get_current_line(editor);
+static struct Cursor visual_editor_get_move_next_WORD(const struct VisualEditor *editor) {
+        struct Cursor cursor = editor->cursor;
+
+        struct Line *line = visual_editor_get_current_line(editor);
         size_t line_len = strlen(line->line);
 
-        editor->cursor.col += strcspn(line->line + editor->cursor.col - 1, "\n\t ");
-        editor->cursor.col += strspn(line->line + editor->cursor.col - 1, "\n\t ");
+        cursor.col += strcspn(line->line + cursor.col - 1, "\n\t ");
+        cursor.col += strspn(line->line + cursor.col - 1, "\n\t ");
 
-        if (line->line[0] == '\n' ||
-            line->line[editor->cursor.col - 1] == '\n' ||
-            editor->cursor.col >= strlen(line->line)) {
-                editor->cursor.row += 1;
-                editor->cursor.col = 1;
+        if (line->line[0] == '\n' || line->line[cursor.col - 1] == '\n' || editor->cursor.col >= line_len) {
+                cursor.row += 1;
+                cursor.col = 1;
 
-                line = visual_editor_get_current_line(editor);
+                line = get_line(editor->file_editor, cursor.row);
                 line_len = strlen(line->line);
 
-                const int empty_chars_len = strspn(line->line + editor->cursor.col - 1, "\n\t ");
-                editor->cursor.col = line_len > 1 ? empty_chars_len + 1 : 1;
+                const int empty_chars_len = strspn(line->line + cursor.col - 1, "\n\t ");
+                cursor.col = line_len > 1 ? empty_chars_len + 1 : 1;
+
+                free_line(line);
         }
+
+        return cursor;
 }
 
 static bool is_keyword(const char c) {
@@ -358,14 +383,16 @@ static bool is_blank(const char c) {
         return c == ' ' || c == '\n' || c == '\t';
 }
 
-static void visual_editor_move_next_word(struct VisualEditor *editor) {
-        const struct Line *line = visual_editor_get_current_line(editor);
+static struct Cursor visual_editor_get_move_next_word(const struct VisualEditor *editor) {
+        struct Cursor cursor = editor->cursor;
+
+        struct Line *line = visual_editor_get_current_line(editor);
         size_t line_len = strlen(line->line);
 
         size_t i = editor->cursor.col - 1;
 
         if (i >= line_len) {
-                return;
+                return editor->cursor;
         }
 
         if (is_keyword(line->line[i])) {
@@ -382,20 +409,25 @@ static void visual_editor_move_next_word(struct VisualEditor *editor) {
         i += strspn(line->line + i, "\n\t ");
 
         if (line->line[0] == '\n' || i >= line_len) {
-                editor->cursor.row += 1;
-                editor->cursor.col = 1;
-                line = visual_editor_get_current_line(editor);
+                cursor.row += 1;
+                cursor.col = 1;
+
+                line = get_line(editor->file_editor, cursor.row);
                 line_len = strlen(line->line);
 
-                const int empty_chars_len = strspn(line->line + editor->cursor.col - 1, "\n\t ");
-                editor->cursor.col = line_len > 1 ? empty_chars_len + 1 : 1;
+                const int empty_chars_len = strspn(line->line + cursor.col - 1, "\n\t ");
+                cursor.col = line_len > 1 ? empty_chars_len + 1 : 1;
+
+                free_line(line);
         }
         else {
-                editor->cursor.col = i + 1;
+                cursor.col = i + 1;
         }
+
+        return cursor;
 }
 
-static void visual_editor_move_previous_word(struct VisualEditor *editor) {
+static struct Cursor visual_editor_get_move_previous_word(struct VisualEditor *editor) {
         const struct Line *line = visual_editor_get_current_line(editor);
 
         // start from current index - 1, go as long as there are printable characters or begin of line
@@ -427,7 +459,7 @@ int run_editor(int argc, char **argv) {
         screen_move_home();
         reprint_screen(editor);
         reprint_status_bar(editor);
-        visual_editor_move_home(editor);
+        visual_editor_get_move_home(editor);
         screen_move_absolute(1, 1 + line_number_field_length);
         printf("\x1b[1 q");
 
@@ -436,49 +468,51 @@ int run_editor(int argc, char **argv) {
         ioctl(0, TTY_CANONICAL, &canonical);
         char c;
         while (read(0, &c, 1) > 0) {
+                //below are editor moves only
+                struct Cursor cursor_new = editor->cursor;
                 switch (c) {
                         case '0':
-                                visual_editor_move_current_line_begin(editor);
+                                cursor_new = visual_editor_get_move_current_line_begin(editor);
                                 break;
                         case '$':
-                                visual_editor_move_current_line_end(editor);
+                                cursor_new = visual_editor_get_move_current_line_end(editor);
                                 break;
                         case '_':
-                                visual_editor_move_first_line_word(editor);
+                                cursor_new = visual_editor_get_move_first_line_word(editor);
                                 break;
                         case 'w':
-                                visual_editor_move_next_word(editor);
+                                cursor_new = visual_editor_get_move_next_word(editor);
                                 break;
                         case 'W':
-                                visual_editor_move_next_WORD(editor);
+                                cursor_new = visual_editor_get_move_next_WORD(editor);
                                 break;
                         case 'b':
-                                visual_editor_move_previous_word(editor);
+                                cursor_new = visual_editor_get_move_previous_word(editor);
                                 break;
                         case 'h':
-                                visual_editor_move_left(editor);
+                                cursor_new = visual_editor_get_move_left(editor);
                                 break;
                         case 'i':
                                 editor->current_mode = INSERT;
                                 printf("\x1b[4 q");
                                 break;
                         case 'j':
-                                visual_editor_move_dn(editor);
+                                cursor_new = visual_editor_get_move_dn(editor);
                                 break;
                         case 'k':
-                                visual_editor_move_up(editor);
+                                cursor_new = visual_editor_get_move_up(editor);
                                 break;
                         case 'l':
-                                visual_editor_move_right(editor);
+                                cursor_new = visual_editor_get_move_right(editor);
                                 break;
                         case 'H':
-                                visual_editor_move_home(editor);
+                                cursor_new = visual_editor_get_move_home(editor);
                                 break;
                         case 'M':
-                                visual_editor_move_middle(editor);
+                                cursor_new = visual_editor_get_move_middle(editor);
                                 break;
                         case 'L':
-                                visual_editor_move_end(editor);
+                                cursor_new = visual_editor_get_move_end(editor);
                                 break;
                         case ':': //FIXME: should not be in this switch
                                 printf("\x1b[40;1H");
@@ -490,6 +524,19 @@ int run_editor(int argc, char **argv) {
                                 break;
                         default:
                                 break;
+                }
+
+                editor->cursor = cursor_new;
+
+                int next_line_index = cursor_new.row - editor->top_line_number;
+                while (next_line_index < 0 || next_line_index >= editor->lines_size) {
+                        if (next_line_index < 0) {
+                                visual_editor_scroll_dir_dn(editor);
+                        }
+                        else {
+                                visual_editor_scroll_dir_up(editor);
+                        }
+                        next_line_index = cursor_new.row - editor->top_line_number;
                 }
 
                 reprint_status_bar(editor);

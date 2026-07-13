@@ -142,6 +142,11 @@ int save_line(const struct FileEditor *editor, struct Line *line) {
         return 0;
 }
 
+void free_line(struct Line *line) {
+        free(line->line);
+        free(line);
+}
+
 
 static ssize_t readline(int fd, char **line_ptr, size_t *line_cap) {
         const int file_pos = lseek(fd, 0, SEEK_CUR);
