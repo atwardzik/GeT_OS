@@ -107,23 +107,30 @@ static void scroll_vertical_dir_up(const unsigned int count) {
         vga_update_cursor_position(ScreenWriter.current_row_position, ScreenWriter.current_column_position);
 }
 
-static void scroll_vertical_dir_dn() {
+static void scroll_vertical_dir_dn(const unsigned int count) {
         vga_clr_cursor();
 
         const int scrollable_area_top = ScreenWriter.scrollable_area_top;
         const int scrollable_area_bottom = ScreenWriter.scrollable_area_bottom;
+        const struct SingleChar empty_char = {0x00, ScreenWriter.current_color_code};
 
         for (size_t i = scrollable_area_bottom; i > scrollable_area_top; --i) {
                 for (size_t j = 0; j < BUFFER_WIDTH; ++j) {
-                        ScreenWriter.buffer->chars[i][j] = ScreenWriter.buffer->chars[i - 1][j];
+                        struct SingleChar shifted_char = {};
+                        if ((int) i - (int) count < scrollable_area_top) {
+                                shifted_char = empty_char;
+                        }
+                        else {
+                                shifted_char = ScreenWriter.buffer->chars[i - count][j];
+                        }
+                        ScreenWriter.buffer->chars[i][j] = shifted_char;
                         vga_put_byte_encoded_color_letter(ScreenWriter.buffer->chars[i][j].ascii_code,
                                                           i, j,
-                                                          ScreenWriter.buffer->chars[i][j].color_code
+                                                          shifted_char.color_code
                         );
                 }
         }
 
-        const struct SingleChar empty_char = {0x00, ScreenWriter.current_color_code};
 
         const ByteColorCode prev_color_code = ScreenWriter.buffer->chars[scrollable_area_top][BUFFER_WIDTH - 1].
                 color_code;
@@ -352,8 +359,11 @@ int handle_escape_sequence(uint8_t *escape_sequence, size_t *escape_sequence_pos
         else if (c == 'S' && left.present) {
                 scroll_vertical_dir_up(left.val);
         }
-        else if (c == 'T') {
-                scroll_vertical_dir_dn();
+        else if (c == 'T' && !left.present) {
+                scroll_vertical_dir_dn(1);
+        }
+        else if (c == 'T' && left.present) {
+                scroll_vertical_dir_dn(left.val);
         }
         else if (c == 'J' && left.present && left.val == 2) {
                 clear_screen();
