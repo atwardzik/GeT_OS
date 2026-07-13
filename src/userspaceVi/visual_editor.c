@@ -333,7 +333,8 @@ static void visual_editor_move_current_line_end(struct VisualEditor *editor) {
         editor->cursor.col = line_len > 1 ? line_len - 1 : 1;
 
         reprint_status_bar(editor);
-        screen_move_absolute(editor->cursor.row - editor->top_line_number + 1, editor->cursor.col + line_number_field_length);
+        screen_move_absolute(editor->cursor.row - editor->top_line_number + 1,
+                             editor->cursor.col + line_number_field_length);
 }
 
 static void visual_editor_move_first_line_word(struct VisualEditor *editor) {
@@ -342,7 +343,107 @@ static void visual_editor_move_first_line_word(struct VisualEditor *editor) {
         editor->cursor.col = line->line[0] != '\n' ? strspn(line->line, "\t ") + 1 : 1;
 
         reprint_status_bar(editor);
-        screen_move_absolute(editor->cursor.row - editor->top_line_number + 1, editor->cursor.col + line_number_field_length);
+        screen_move_absolute(editor->cursor.row - editor->top_line_number + 1,
+                             editor->cursor.col + line_number_field_length);
+}
+
+/*
+ *							*word*
+ * A word consists of a sequence of letters, digits and underscores, or a
+ * sequence of other non-blank characters, separated with white space (spaces,
+ * tabs, <EOL>).  This can be changed with the 'iskeyword' option.  For
+ * characters above 255, a word ends when the Unicode character class changes
+ * (e.g., between letters, subscripts, emojis, etc).  An empty line is also
+ * considered to be a word.
+ *                                                         *WORD*
+ * A WORD consists of a sequence of non-blank characters, separated with white
+ * space.  An empty line is also considered to be a WORD.
+ */
+
+static void visual_editor_move_next_WORD(struct VisualEditor *editor) {
+        const struct Line *line = visual_editor_get_current_line(editor);
+        size_t line_len = strlen(line->line);
+
+        editor->cursor.col += strcspn(line->line + editor->cursor.col - 1, "\n\t ");
+        editor->cursor.col += strspn(line->line + editor->cursor.col - 1, "\n\t ");
+
+        if (line->line[0] == '\n' ||
+            line->line[editor->cursor.col - 1] == '\n' ||
+            editor->cursor.col >= strlen(line->line)) {
+                editor->cursor.row += 1;
+                editor->cursor.col = 1;
+
+                line = visual_editor_get_current_line(editor);
+                line_len = strlen(line->line);
+
+                const int empty_chars_len = strspn(line->line + editor->cursor.col - 1, "\n\t ");
+                editor->cursor.col = line_len > 1 ? empty_chars_len + 1 : 1;
+        }
+
+        reprint_status_bar(editor);
+        screen_move_absolute(editor->cursor.row - editor->top_line_number + 1,
+                             editor->cursor.col + line_number_field_length);
+}
+
+static bool is_keyword(const char c) {
+        return isalnum(c) || c == '_';
+}
+
+static bool is_blank(const char c) {
+        return c == ' ' || c == '\n' || c == '\t';
+}
+
+static void visual_editor_move_next_word(struct VisualEditor *editor) {
+        const struct Line *line = visual_editor_get_current_line(editor);
+        size_t line_len = strlen(line->line);
+
+        size_t i = editor->cursor.col - 1;
+
+        if (i >= line_len) {
+                return;
+        }
+
+        if (is_keyword(line->line[i])) {
+                while (i < line_len && is_keyword(line->line[i])) {
+                        i += 1;
+                }
+        }
+        else if (!is_blank(line->line[i])) {
+                while (i < line_len && !is_blank(line->line[i]) && !is_keyword(line->line[i])) {
+                        i += 1;
+                }
+        }
+
+        i += strspn(line->line + i, "\n\t ");
+
+        if (line->line[0] == '\n' || i >= line_len) {
+                editor->cursor.row += 1;
+                editor->cursor.col = 1;
+                line = visual_editor_get_current_line(editor);
+                line_len = strlen(line->line);
+
+                const int empty_chars_len = strspn(line->line + editor->cursor.col - 1, "\n\t ");
+                editor->cursor.col = line_len > 1 ? empty_chars_len + 1 : 1;
+        }
+        else {
+                editor->cursor.col = i + 1;
+        }
+
+        reprint_status_bar(editor);
+        screen_move_absolute(editor->cursor.row - editor->top_line_number + 1,
+                             editor->cursor.col + line_number_field_length);
+}
+
+static void visual_editor_move_previous_word(struct VisualEditor *editor) {
+        const struct Line *line = visual_editor_get_current_line(editor);
+
+        // start from current index - 1, go as long as there are printable characters or begin of line
+        // if in end of line, last character
+        int current_index = editor->cursor.col - 1;
+
+        reprint_status_bar(editor);
+        screen_move_absolute(editor->cursor.row - editor->top_line_number + 1,
+                             editor->cursor.col + line_number_field_length);
 }
 
 int run_editor(int argc, char **argv) {
@@ -387,13 +488,23 @@ int run_editor(int argc, char **argv) {
                         case '_':
                                 visual_editor_move_first_line_word(editor);
                                 break;
+                        case 'w':
+                                visual_editor_move_next_word(editor);
+                                break;
+                        case 'W':
+                                visual_editor_move_next_WORD(editor);
+                                break;
+                        case 'b':
+                                visual_editor_move_previous_word(editor);
+                                break;
                         case 'h':
                                 visual_editor_move_left(editor);
                                 break;
                         case 'i': {
                                 editor->current_mode = INSERT;
                                 reprint_status_bar(editor);
-                                screen_move_absolute(editor->cursor.row - editor->top_line_number + 1, editor->cursor.col + line_number_field_length);
+                                screen_move_absolute(editor->cursor.row - editor->top_line_number + 1,
+                                                     editor->cursor.col + line_number_field_length);
                                 printf("\x1b[4 q");
                         }
                         break;
@@ -419,6 +530,12 @@ int run_editor(int argc, char **argv) {
                                 printf("\x1b[40;1H");
                                 printf(":");
                                 break;
+                        case '\x1b':
+                                editor->current_mode = NORMAL;
+                                reprint_status_bar(editor);
+                                screen_move_absolute(editor->cursor.row - editor->top_line_number + 1,
+                                                     editor->cursor.col + line_number_field_length);
+                                printf("\x1b[1 q");
                         default:
                                 break;
                 }

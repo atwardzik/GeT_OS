@@ -241,6 +241,14 @@ static inline bool isalpha(const int c) {
         return false;
 }
 
+static inline bool isalnum(const int c) {
+        if ((c >= 65 && c <= 90) || (c >= 97 && c <= 122) || (c >= 48 && c <= 57)) {
+                return true;
+        }
+
+        return false;
+}
+
 
 /*
  * memory
