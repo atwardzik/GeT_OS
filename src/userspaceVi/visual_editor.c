@@ -216,9 +216,6 @@ static void visual_editor_move_dn(struct VisualEditor *editor) {
         if (editor->cursor.col > line_len) {
                 editor->cursor.col = line_len > 1 ? line_len - 1 : 1;
         }
-
-        reprint_status_bar(editor);
-        screen_move_absolute(next_line_index + 1, editor->cursor.col + line_number_field_length);
 }
 
 static void visual_editor_move_up(struct VisualEditor *editor) {
@@ -247,9 +244,6 @@ static void visual_editor_move_up(struct VisualEditor *editor) {
         if (editor->cursor.col > line_len) {
                 editor->cursor.col = line_len > 1 ? line_len - 1 : 1;
         }
-
-        reprint_status_bar(editor);
-        screen_move_absolute(previous_line_index + 1, editor->cursor.col + line_number_field_length);
 }
 
 
@@ -266,9 +260,6 @@ static void visual_editor_move_left(struct VisualEditor *editor) {
         else {
                 editor->cursor.col -= 1;
         }
-        reprint_status_bar(editor);
-        screen_move_absolute(editor->cursor.row - editor->top_line_number + 1,
-                             editor->cursor.col + line_number_field_length);
 }
 
 static void visual_editor_move_right(struct VisualEditor *editor) {
@@ -284,9 +275,6 @@ static void visual_editor_move_right(struct VisualEditor *editor) {
         else {
                 editor->cursor.col += 1;
         }
-        reprint_status_bar(editor);
-        screen_move_absolute(editor->cursor.row - editor->top_line_number + 1,
-                             editor->cursor.col + line_number_field_length);
 }
 
 static void visual_editor_move_home(struct VisualEditor *editor) {
@@ -294,9 +282,6 @@ static void visual_editor_move_home(struct VisualEditor *editor) {
 
         editor->cursor.row = first_line_number;
         editor->cursor.col = 1;
-
-        reprint_status_bar(editor);
-        screen_move_absolute(1, line_number_field_length + 1);
 }
 
 static void visual_editor_move_middle(struct VisualEditor *editor) {
@@ -305,9 +290,6 @@ static void visual_editor_move_middle(struct VisualEditor *editor) {
 
         editor->cursor.row = middle_line_number;
         editor->cursor.col = 1;
-
-        reprint_status_bar(editor);
-        screen_move_absolute(editor->lines_size / 2, line_number_field_length + 1);
 }
 
 static void visual_editor_move_end(struct VisualEditor *editor) {
@@ -315,15 +297,10 @@ static void visual_editor_move_end(struct VisualEditor *editor) {
 
         editor->cursor.row = last_line_number;
         editor->cursor.col = 1;
-
-        reprint_status_bar(editor);
-        screen_move_absolute(editor->lines_size, line_number_field_length + 1);
 }
 
 static void visual_editor_move_current_line_begin(struct VisualEditor *editor) {
         editor->cursor.col = 1;
-        reprint_status_bar(editor);
-        screen_move_absolute(editor->cursor.row - editor->top_line_number + 1, line_number_field_length + 1);
 }
 
 static void visual_editor_move_current_line_end(struct VisualEditor *editor) {
@@ -331,20 +308,12 @@ static void visual_editor_move_current_line_end(struct VisualEditor *editor) {
         const size_t line_len = strlen(line->line);
 
         editor->cursor.col = line_len > 1 ? line_len - 1 : 1;
-
-        reprint_status_bar(editor);
-        screen_move_absolute(editor->cursor.row - editor->top_line_number + 1,
-                             editor->cursor.col + line_number_field_length);
 }
 
 static void visual_editor_move_first_line_word(struct VisualEditor *editor) {
         const struct Line *line = visual_editor_get_current_line(editor);
 
         editor->cursor.col = line->line[0] != '\n' ? strspn(line->line, "\t ") + 1 : 1;
-
-        reprint_status_bar(editor);
-        screen_move_absolute(editor->cursor.row - editor->top_line_number + 1,
-                             editor->cursor.col + line_number_field_length);
 }
 
 /*
@@ -379,10 +348,6 @@ static void visual_editor_move_next_WORD(struct VisualEditor *editor) {
                 const int empty_chars_len = strspn(line->line + editor->cursor.col - 1, "\n\t ");
                 editor->cursor.col = line_len > 1 ? empty_chars_len + 1 : 1;
         }
-
-        reprint_status_bar(editor);
-        screen_move_absolute(editor->cursor.row - editor->top_line_number + 1,
-                             editor->cursor.col + line_number_field_length);
 }
 
 static bool is_keyword(const char c) {
@@ -428,10 +393,6 @@ static void visual_editor_move_next_word(struct VisualEditor *editor) {
         else {
                 editor->cursor.col = i + 1;
         }
-
-        reprint_status_bar(editor);
-        screen_move_absolute(editor->cursor.row - editor->top_line_number + 1,
-                             editor->cursor.col + line_number_field_length);
 }
 
 static void visual_editor_move_previous_word(struct VisualEditor *editor) {
@@ -440,10 +401,6 @@ static void visual_editor_move_previous_word(struct VisualEditor *editor) {
         // start from current index - 1, go as long as there are printable characters or begin of line
         // if in end of line, last character
         int current_index = editor->cursor.col - 1;
-
-        reprint_status_bar(editor);
-        screen_move_absolute(editor->cursor.row - editor->top_line_number + 1,
-                             editor->cursor.col + line_number_field_length);
 }
 
 int run_editor(int argc, char **argv) {
@@ -471,6 +428,7 @@ int run_editor(int argc, char **argv) {
         reprint_screen(editor);
         reprint_status_bar(editor);
         visual_editor_move_home(editor);
+        screen_move_absolute(1, 1 + line_number_field_length);
         printf("\x1b[1 q");
 
         bool echo = false, canonical = false;
@@ -500,14 +458,10 @@ int run_editor(int argc, char **argv) {
                         case 'h':
                                 visual_editor_move_left(editor);
                                 break;
-                        case 'i': {
+                        case 'i':
                                 editor->current_mode = INSERT;
-                                reprint_status_bar(editor);
-                                screen_move_absolute(editor->cursor.row - editor->top_line_number + 1,
-                                                     editor->cursor.col + line_number_field_length);
                                 printf("\x1b[4 q");
-                        }
-                        break;
+                                break;
                         case 'j':
                                 visual_editor_move_dn(editor);
                                 break;
@@ -526,19 +480,21 @@ int run_editor(int argc, char **argv) {
                         case 'L':
                                 visual_editor_move_end(editor);
                                 break;
-                        case ':':
+                        case ':': //FIXME: should not be in this switch
                                 printf("\x1b[40;1H");
                                 printf(":");
                                 break;
                         case '\x1b':
                                 editor->current_mode = NORMAL;
-                                reprint_status_bar(editor);
-                                screen_move_absolute(editor->cursor.row - editor->top_line_number + 1,
-                                                     editor->cursor.col + line_number_field_length);
                                 printf("\x1b[1 q");
+                                break;
                         default:
                                 break;
                 }
+
+                reprint_status_bar(editor);
+                screen_move_absolute(editor->cursor.row - editor->top_line_number + 1,
+                                     editor->cursor.col + line_number_field_length);
         }
 
         return 0;
