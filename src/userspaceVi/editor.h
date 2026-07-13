@@ -5,6 +5,8 @@
 #ifndef OS_EDITOR_H
 #define OS_EDITOR_H
 
+#include "libc.h"
+
 struct Line {
         char *line;
         unsigned int linecap;
@@ -12,6 +14,11 @@ struct Line {
 
         bool edited;
 };
+
+static inline void free_line(struct Line *line) {
+        free(line->line);
+        free(line);
+}
 
 enum Mode {
         NORMAL,
