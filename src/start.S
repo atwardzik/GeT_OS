@@ -57,7 +57,6 @@ decl_isr_bkpt isr_nmi
 decl_isr_bkpt isr_hardfault
 decl_isr_bkpt isr_memmanage
 decl_isr_bkpt isr_busfault
-decl_isr_bkpt isr_usagefault
 decl_isr_bkpt isr_invalid
 
 

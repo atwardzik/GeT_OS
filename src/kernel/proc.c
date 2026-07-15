@@ -639,10 +639,15 @@ void sys_kill(const pid_t pid, int sig) {
                 return;
         }
 
+        signal_notify(process->parent, SIGCHLD);
+        for (size_t i = 0; i < process->children_count; ++i) {
+                signal_notify(process->children[i], SIGHUP);
+        }
+
         for (size_t i = 0; i < process->files.count; ++i) {
                 struct File *file = process->files.fdtable[i];
 
-                if (file->f_owner == process->pid) {
+                if (file->f_owner == process->pid) { //FIXME: what about the children of the dead process?
                         kfree(file);
                 }
         }

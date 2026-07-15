@@ -171,6 +171,28 @@ isr_systick:
         bx      lr
 
 /**
+ *
+ */
+.thumb_func
+.global isr_usagefault
+.align 4
+isr_usagefault:
+        push    {lr}
+        adr     r0, usagefault_msg
+        bl      printk
+        bl      sys_getpid
+        mov     r1, #15         @ SIGKILL
+        bl      sys_kill
+        bl      context_switch
+
+        pop     {pc}
+
+
+.align 4
+usagefault_msg:
+        .asciz "Stack Smashing Detected!\n"
+
+/**
  * Writes N-th interrupt handler to the IVT. FIXME: currently only for irq 0-31
  *  r0 - interrupt number
  *  r1 - interrupt handler
