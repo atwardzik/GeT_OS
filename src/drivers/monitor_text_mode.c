@@ -38,8 +38,19 @@ static struct {
         (struct CharBuffer *) screen_buffer_ptr
 };
 
+static void move_buffer_position_up(void) {
+        if (ScreenWriter.current_row_position != 0) {
+                ScreenWriter.current_row_position -= 1;
+        }
+}
 
-static void move_buffer_position_left() {
+static void move_buffer_position_dn(void) {
+        if (ScreenWriter.current_row_position < BUFFER_HEIGHT - 1) {
+                ScreenWriter.current_row_position += 1;
+        }
+}
+
+static void move_buffer_position_left(void) {
         if (ScreenWriter.current_column_position == 0) {
                 ScreenWriter.current_row_position -= 1;
                 ScreenWriter.current_column_position = BUFFER_WIDTH - 1;
@@ -49,7 +60,7 @@ static void move_buffer_position_left() {
         }
 }
 
-static void move_buffer_position_right() {
+static void move_buffer_position_right(void) {
         if (ScreenWriter.current_column_position == BUFFER_WIDTH - 1) {
                 ScreenWriter.current_row_position += 1;
                 ScreenWriter.current_column_position = 0;
@@ -69,8 +80,6 @@ static void save_char_to_buffer(const char c) {
 }
 
 static void scroll_vertical_dir_up(const unsigned int count) {
-        vga_clr_cursor();
-
         const int scrollable_area_bottom = ScreenWriter.scrollable_area_bottom;
         const struct SingleChar empty_char = {0x00, ScreenWriter.current_color_code};
 
@@ -103,14 +112,9 @@ static void scroll_vertical_dir_up(const unsigned int count) {
                                                   prev_color_code
                 );
         }
-
-        vga_update_cursor_position(ScreenWriter.current_row_position, ScreenWriter.current_column_position);
-        vga_clr_cursor();
 }
 
 static void scroll_vertical_dir_dn(const unsigned int count) {
-        vga_clr_cursor();
-
         const int scrollable_area_top = ScreenWriter.scrollable_area_top;
         const int scrollable_area_bottom = ScreenWriter.scrollable_area_bottom;
         const struct SingleChar empty_char = {0x00, ScreenWriter.current_color_code};
@@ -144,9 +148,6 @@ static void scroll_vertical_dir_dn(const unsigned int count) {
                                                   prev_color_code
                 );
         }
-
-        vga_update_cursor_position(ScreenWriter.current_row_position, ScreenWriter.current_column_position);
-        vga_clr_cursor();
 }
 
 static void scroll_horizontal_right(unsigned int row_position, unsigned int column_position) {
@@ -184,6 +185,28 @@ static void scroll_horizontal_right(unsigned int row_position, unsigned int colu
         }
 }
 
+static void scroll_horizontal_right_no_wrap(void) {
+        const unsigned int row = ScreenWriter.current_row_position;
+        const unsigned int col = ScreenWriter.current_column_position;
+
+        const struct SingleChar empty_space = {EMPTY_SPACE, (BLACK << 4 | WHITE)};
+        bool got_endl = false;
+        for (int i = BUFFER_WIDTH - 1; i > ScreenWriter.current_column_position; --i) {
+                struct SingleChar current_char = ScreenWriter.buffer->chars[row][i - 1];
+                if (got_endl || current_char.ascii_code == ENDL) {
+                        got_endl = true;
+                }
+                else {
+                        current_char = empty_space;
+                }
+                ScreenWriter.buffer->chars[row][i] = current_char;
+                vga_put_byte_encoded_color_letter(current_char.ascii_code, row, i, current_char.color_code);
+        }
+
+        ScreenWriter.buffer->chars[row][col] = empty_space;
+        vga_put_byte_encoded_color_letter(empty_space.ascii_code, row, col, empty_space.color_code);
+}
+
 static void scroll_horizontal_left(const unsigned int row_position, const unsigned int column_position) {
         for (size_t i = row_position; i < BUFFER_HEIGHT; ++i) {
                 const size_t column_starting_point = (i == row_position) ? column_position : 0;
@@ -210,6 +233,21 @@ static void scroll_horizontal_left(const unsigned int row_position, const unsign
                         vga_put_byte_encoded_color_letter(current_char.ascii_code, i, j - 1, current_char.color_code);
                 }
         }
+}
+
+static void scroll_horizontal_left_no_wrap(void) {
+        const unsigned int row = ScreenWriter.current_row_position;
+        const unsigned int col = ScreenWriter.current_column_position;
+
+        for (int i = ScreenWriter.current_column_position; i < BUFFER_WIDTH - 1; ++i) {
+                const struct SingleChar current_char = ScreenWriter.buffer->chars[row][i + 1];
+                ScreenWriter.buffer->chars[row][i] = current_char;
+                vga_put_byte_encoded_color_letter(current_char.ascii_code, row, i, current_char.color_code);
+        }
+
+        const struct SingleChar empty_space = {EMPTY_SPACE, (BLACK << 4 | WHITE)};
+        ScreenWriter.buffer->chars[row][BUFFER_WIDTH - 1] = (struct SingleChar){0, (BLACK << 4 | WHITE)};
+        vga_put_byte_encoded_color_letter(empty_space.ascii_code, row, BUFFER_WIDTH - 1, empty_space.color_code);
 }
 
 static void write_new_line() {
@@ -276,15 +314,6 @@ static void set_color(const param_t *fg, const param_t *bg) {
         }
 }
 
-static void move_cursor(const int row, const int col) {
-        vga_clr_cursor();
-
-        ScreenWriter.current_row_position = row;
-        ScreenWriter.current_column_position = col;
-
-        vga_update_cursor_position(ScreenWriter.current_row_position, ScreenWriter.current_column_position);
-}
-
 static void move_cursor_absolute(param_t *left, param_t *right) {
         if (!left->present) {
                 *left = (param_t){true, 1};
@@ -293,7 +322,8 @@ static void move_cursor_absolute(param_t *left, param_t *right) {
                 *right = (param_t){true, 1};
         }
 
-        move_cursor(left->val - 1, right->val - 1);
+        ScreenWriter.current_row_position = left->val - 1;
+        ScreenWriter.current_column_position = right->val - 1;
 }
 
 static void define_scrolling_area(param_t *left, param_t *right) {
@@ -341,16 +371,29 @@ int handle_escape_sequence(uint8_t *escape_sequence, size_t *escape_sequence_pos
         }
 
         escape_sequence[*escape_sequence_position] = (char) c;
-        if (!isalpha(c)) {
+        if (!isalpha(c) && c != '@') {
                 *escape_sequence_position += 1;
                 return 0;
         }
 
         param_t left, right;
         parse_arguments(c, escape_sequence, &left, &right);
+        vga_clr_cursor();
 
         if (c == 'm') {
                 set_color(&left, &right);
+        }
+        else if (c == 'A') {
+                move_buffer_position_up();
+        }
+        else if (c == 'B') {
+                move_buffer_position_dn();
+        }
+        else if (c == 'C') {
+                move_buffer_position_right();
+        }
+        else if (c == 'D') {
+                move_buffer_position_left();
         }
         else if (c == 'H') {
                 move_cursor_absolute(&left, &right);
@@ -371,7 +414,7 @@ int handle_escape_sequence(uint8_t *escape_sequence, size_t *escape_sequence_pos
                 clear_screen();
         }
         else if (c == 'G' && left.present) {
-                move_cursor(ScreenWriter.current_row_position, left.val - 1);
+                ScreenWriter.current_column_position = left.val - 1;
         }
         else if (c == 'r') {
                 define_scrolling_area(&left, &right);
@@ -379,10 +422,17 @@ int handle_escape_sequence(uint8_t *escape_sequence, size_t *escape_sequence_pos
         else if (c == 'q' && left.present) {
                 vga_change_cursor_shape(left.val);
         }
+        else if (c == '@') {
+                scroll_horizontal_right_no_wrap();
+        }
+        else if (c == 'P') {
+                scroll_horizontal_left_no_wrap();
+        }
 
         *escape_sequence_position = 0;
         memset(escape_sequence, 0, 10);
 
+        vga_update_cursor_position(ScreenWriter.current_row_position, ScreenWriter.current_column_position);
         return 0;
 }
 
@@ -409,12 +459,6 @@ void monitor_tm_write_byte(const int c) {
         }
         else if (c == CARRIAGE_RETURN) {
                 ScreenWriter.current_column_position = 0;
-        }
-        else if (c == ARROW_LEFT) {
-                move_buffer_position_left();
-        }
-        else if (c == ARROW_RIGHT) {
-                move_buffer_position_right();
         }
         else {
                 write_with_line_overflow_if_needed(c);

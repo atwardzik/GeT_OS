@@ -164,7 +164,8 @@ static void handle_ascii_control_character(int c) {
         else if (c == ENDL) {
                 handle_newline_character();
         }
-        else {
+
+        if (!tty_canonical_mode) {
                 insert_and_shift(c, keyboard_buffer_current_position, keyboard_buffer_final_length + 1);
                 keyboard_buffer_final_length += 1;
                 keyboard_buffer_current_position += 1;
@@ -188,6 +189,12 @@ static void handle_ansi_escape_sequence(int c) {
                 if (!tty_canonical_mode) { //should we really print this? It must be rather the decision of the prgrm
                         tty_echo(c);
                 }
+        }
+
+        if (!tty_canonical_mode) {
+                insert_and_shift(c, keyboard_buffer_current_position, keyboard_buffer_final_length + 1);
+                keyboard_buffer_final_length += 1;
+                keyboard_buffer_current_position += 1;
         }
 }
 
