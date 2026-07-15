@@ -240,7 +240,7 @@ int get_file_lines(
 struct Line *new_line_at(struct FileEditor *editor, int line_number) {}
 
 bool check_line_exists(const struct FileEditor *editor, const unsigned int line_number) {
-        if (editor->lines[line_number].location == NONE) {
+        if (line_number > editor->lines_size || editor->lines[line_number].location == NONE) {
                 return false;
         }
 

@@ -185,15 +185,14 @@ static void visual_editor_scroll_dir_up(struct VisualEditor *editor, const unsig
 
         screen_scroll_dir_up(count);
 
-        struct Line lines[count];
-        get_file_lines(editor->file_editor, editor->cursor.row, count, lines);
-
         struct Cursor cursor = editor->cursor;
+        int line_screen_index = cursor.row - editor->top_line_number;
+        get_file_lines(editor->file_editor, editor->cursor.row, count, &editor->lines[line_screen_index]);
+
         for (int j = 0; j < count; ++j) {
-                const int line_screen_index = cursor.row - editor->top_line_number;
-                editor->lines[line_screen_index] = lines[j];
+                line_screen_index = cursor.row - editor->top_line_number;
                 screen_move_absolute(line_screen_index + 1, 1);
-                print_line(editor, &lines[j], false);
+                print_line(editor, &editor->lines[line_screen_index], false);
                 cursor.row += 1;
         }
 }
@@ -222,16 +221,11 @@ static void visual_editor_scroll_dir_dn(struct VisualEditor *editor, const unsig
 
         screen_scroll_dir_dn(count);
 
-        struct Line lines[count];
-        get_file_lines(editor->file_editor, editor->cursor.row - count + 1, count, lines);
+        get_file_lines(editor->file_editor, editor->cursor.row - count + 1, count, &editor->lines[0]);
 
-        struct Cursor cursor = editor->cursor;
         for (int j = 0; j < count; ++j) {
-                const int line_screen_index = cursor.row - editor->top_line_number;
-                editor->lines[line_screen_index] = lines[line_screen_index];
-                screen_move_absolute(line_screen_index + 1, 1);
-                print_line(editor, &lines[line_screen_index], false);
-                cursor.row -= 1;
+                screen_move_absolute(j + 1, 1);
+                print_line(editor, &editor->lines[j], false);
         }
 }
 
@@ -517,10 +511,36 @@ static struct Cursor visual_editor_get_move_half_page_dn(const struct VisualEdit
         return cursor;
 }
 
+static struct Cursor visual_editor_get_move_page_dn(const struct VisualEditor *editor) {
+        struct Cursor cursor = editor->cursor;
+
+        int i = editor->lines_size;
+        while (!cursor_can_move_dn(editor, &cursor, i)) {
+                i /= 2;
+        }
+
+        cursor.row += i;
+
+        return cursor;
+}
+
 static struct Cursor visual_editor_get_move_half_page_up(const struct VisualEditor *editor) {
         struct Cursor cursor = editor->cursor;
 
         int i = editor->lines_size / 2;
+        while (!cursor_can_move_up(editor, &cursor, i)) {
+                i /= 2;
+        }
+
+        cursor.row -= i;
+
+        return cursor;
+}
+
+static struct Cursor visual_editor_get_move_page_up(const struct VisualEditor *editor) {
+        struct Cursor cursor = editor->cursor;
+
+        int i = editor->lines_size;
         while (!cursor_can_move_up(editor, &cursor, i)) {
                 i /= 2;
         }
@@ -556,7 +576,9 @@ static const struct Movement movements[] = {
         {'L', visual_editor_get_move_end},
 
         {CTRL_KEY('d'), visual_editor_get_move_half_page_dn},
+        {CTRL_KEY('f'), visual_editor_get_move_page_dn},
         {CTRL_KEY('u'), visual_editor_get_move_half_page_up},
+        {CTRL_KEY('b'), visual_editor_get_move_page_up},
 };
 
 int run_editor(int argc, char **argv) {
