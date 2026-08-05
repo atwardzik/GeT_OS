@@ -114,6 +114,15 @@ static void scroll_vertical_dir_up(const unsigned int count) {
         }
 }
 
+static void move_start_next_line(void) {
+        if (ScreenWriter.current_row_position == ScreenWriter.scrollable_area_bottom) {
+                scroll_vertical_dir_up(1);
+        }
+        else {
+                ScreenWriter.current_row_position += 1;
+        }
+}
+
 static void scroll_vertical_dir_dn(const unsigned int count) {
         const int scrollable_area_top = ScreenWriter.scrollable_area_top;
         const int scrollable_area_bottom = ScreenWriter.scrollable_area_bottom;
@@ -394,6 +403,9 @@ int handle_escape_sequence(uint8_t *escape_sequence, size_t *escape_sequence_pos
         }
         else if (c == 'D') {
                 move_buffer_position_left();
+        }
+        else if (c == 'E') {
+                move_start_next_line();
         }
         else if (c == 'H') {
                 move_cursor_absolute(&left, &right);

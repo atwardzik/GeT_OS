@@ -145,7 +145,9 @@ static void handle_newline_character(void) {
 
         while (keyboard_buffer_current_position <= keyboard_buffer_final_length) {
                 keyboard_buffer_current_position += 1;
-                tty_echo(ARROW_RIGHT);
+                tty_echo(0x1b);
+                tty_echo('[');
+                tty_echo('@');
         }
         tty_echo(ENDL);
 
@@ -434,11 +436,7 @@ void printk_status_finish(const int return_code) {
         const enum StartupStatus status = (return_code == 0) ? STATUS_OK : STATUS_FAILED;
         printk_status(status);
 
-        for (int i = 0; i < current_status_len + 1; ++i) {
-                write_byte(ARROW_RIGHT);
-        }
-
-        printk("\n");
+        printk("\x1b[E");
 }
 
 void printk_status_info(const char *msg) {
