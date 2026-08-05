@@ -616,12 +616,6 @@ void sys_exit(int status) {
         current->pstate = TERMINATED;
         current->exit_code = status;
 
-        signal_notify(current->parent, SIGCHLD);
-
-        for (size_t i = 0; i < current->children_count; ++i) {
-                signal_notify(current->children[i], SIGHUP);
-        }
-
         sys_kill(current->pid, SIGKILL);
 
         __asm__("msr    msp, %0\n\r" : : "r"(scheduler.main_kernel_stack));
