@@ -133,6 +133,12 @@ struct File {
         // struct Path f_path;
 };
 
+struct pollfd {
+        int   fd;         /* file descriptor */
+        short events;     /* requested events */
+        short revents;    /* returned events */
+};
+
 struct FileOperations {
         ssize_t (*lseek)(struct File *file, size_t offset, int whence);
 
@@ -147,6 +153,8 @@ struct FileOperations {
         int (*flush)(struct File *file);
 
         int (*ioctl)(struct File *file, uint64_t request, void *arg);
+
+        int (*poll)(struct File *file, struct pollfd *fds, size_t nfds, int timeout); //timeout in millis
 };
 
 struct Files {
