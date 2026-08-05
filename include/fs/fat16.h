@@ -38,5 +38,7 @@ struct Dentry *FAT16_mount(
 
 int FAT16_decode_entry_name(struct FAT16_DirectoryEntry *entry, char *buf);
 
+int FAT16_encode_entry_name(const char *name, struct FAT16_DirectoryEntry *entry);
+
 
 #endif //OS_FAT16_H

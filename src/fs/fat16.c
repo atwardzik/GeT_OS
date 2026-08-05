@@ -41,6 +41,8 @@ struct FAT16_SuperBlockOperations {
         struct HardDriveOperations hd_op;
 };
 
+static constexpr size_t FAT_SECTOR_CACHE_SIZE = 256;
+
 struct FAT16_SuperBlock {
         struct SuperBlock sb;
 
@@ -50,7 +52,7 @@ struct FAT16_SuperBlock {
         uint16_t data_region_start;
 
         uint16_t FAT_cached_sector;
-        uint16_t FAT_sector_cache[256];
+        uint16_t FAT_sector_cache[FAT_SECTOR_CACHE_SIZE];
 };
 
 struct FAT16_Inode {
@@ -77,7 +79,7 @@ static struct VFS_Inode *FAT16_alloc_inode(struct SuperBlock *sb) {
 static void FAT16_destroy_inode(struct VFS_Inode *) {}
 
 
-static size_t align_block_size(size_t count, size_t bytes_per_sector) {
+static size_t align_block_size(const size_t count, const size_t bytes_per_sector) {
         if (count % bytes_per_sector == 0) {
                 return count;
         }
@@ -85,7 +87,7 @@ static size_t align_block_size(size_t count, size_t bytes_per_sector) {
         return count - (count % bytes_per_sector) + bytes_per_sector;
 }
 
-static ssize_t read_root_directory(struct File *file, void *buf, const size_t count, const off_t file_offset) {
+static ssize_t FAT16_read_root_directory(struct File *file, void *buf, const size_t count, const off_t file_offset) {
         const struct FAT16_Inode *inode = (struct FAT16_Inode *) file->f_inode;
         const auto sb = (struct FAT16_SuperBlock *) file->f_inode->i_sb;
         const auto sb_op = (struct FAT16_SuperBlockOperations *) sb->sb.s_op;
@@ -100,7 +102,7 @@ static ssize_t read_root_directory(struct File *file, void *buf, const size_t co
         if (sb_op->hd_op.read_block(inode->first_cluster + cluster_offset, block_size, temp_buf) == 0) {
                 memcpy(buf, temp_buf + sector_offset, count);
 
-                file->f_pos += count;
+                file->f_pos += count; //fixme: this modification does not belong at this abstraction level
                 kfree(temp_buf);
                 return count;
         }
@@ -109,24 +111,41 @@ static ssize_t read_root_directory(struct File *file, void *buf, const size_t co
         return 0;
 }
 
-static uint16_t FAT_fetch_next_cluster(struct FAT16_SuperBlock *sb, const uint16_t current_cluster) {
+static int FAT16_write_root_directory(const struct File *file, void *buf, const size_t count) {
+        const struct FAT16_Inode *inode = (struct FAT16_Inode *) file->f_inode;
+        const auto sb = (struct FAT16_SuperBlock *) file->f_inode->i_sb;
         const auto sb_op = (struct FAT16_SuperBlockOperations *) sb->sb.s_op;
-        const uint16_t current_cluster_FAT_sector = current_cluster / 256;
-        const uint16_t current_cluster_position_in_FAT_sector = current_cluster % 256;
 
-        const uint16_t FAT_cached_range_start = sb->FAT_cached_sector * 256;
-        const uint16_t FAT_cached_range_end = (sb->FAT_cached_sector + 1) * 256;
+        if (count != inode->vfs_inode.i_size) {
+                return -1;
+        }
+
+        sb_op->hd_op.write_block(inode->first_cluster, inode->vfs_inode.i_size, buf);
+        return 0;
+}
+
+static uint16_t FAT16_find_next_cluster(struct FAT16_SuperBlock *sb, const uint16_t current_cluster) {
+        const auto sb_op = (struct FAT16_SuperBlockOperations *) sb->sb.s_op;
+        const uint16_t current_cluster_FAT_sector = current_cluster / FAT_SECTOR_CACHE_SIZE;
+        const uint16_t current_cluster_position_in_FAT_sector = current_cluster % FAT_SECTOR_CACHE_SIZE;
+
+        const uint16_t FAT_cached_range_start = sb->FAT_cached_sector * FAT_SECTOR_CACHE_SIZE;
+        const uint16_t FAT_cached_range_end = (sb->FAT_cached_sector + 1) * FAT_SECTOR_CACHE_SIZE;
 
         if (FAT_cached_range_start <= current_cluster && current_cluster < FAT_cached_range_end) {
                 return sb->FAT_sector_cache[current_cluster_position_in_FAT_sector];
         }
 
 
-        sb_op->hd_op.read_block(sb->fat_first_sector + current_cluster_FAT_sector, 512, (char *) sb->FAT_sector_cache);
+        sb_op->hd_op.read_block(sb->fat_first_sector + current_cluster_FAT_sector,
+                                sizeof(uint16_t) * FAT_SECTOR_CACHE_SIZE,
+                                (char *) sb->FAT_sector_cache
+        );
+        sb->FAT_cached_sector = current_cluster_FAT_sector;
         return sb->FAT_sector_cache[current_cluster_position_in_FAT_sector];
 }
 
-static ssize_t follow_fat_chain(struct File *file, void *buf, const size_t count, const off_t file_offset) {
+static ssize_t FAT16_follow_fat_chain(struct File *file, void *buf, const size_t count, const off_t file_offset) {
         const struct FAT16_Inode *inode = (struct FAT16_Inode *) file->f_inode;
         if (file_offset >= inode->vfs_inode.i_size) {
                 ((char *) buf)[0] = 0;
@@ -145,7 +164,7 @@ static ssize_t follow_fat_chain(struct File *file, void *buf, const size_t count
         uint16_t cluster = inode->first_cluster;
         //determine cluster for current file offset
         for (int i = 0; i < cluster_start_offset; ++i) {
-                cluster = FAT_fetch_next_cluster(sb, cluster);
+                cluster = FAT16_find_next_cluster(sb, cluster);
         }
 
         int i = 0;
@@ -173,7 +192,7 @@ static ssize_t follow_fat_chain(struct File *file, void *buf, const size_t count
                 remaining_bytes -= to_copy;
                 i += 1;
 
-                cluster = FAT_fetch_next_cluster(sb, cluster);
+                cluster = FAT16_find_next_cluster(sb, cluster);
                 //fixme: what if file_offset + count > filesize?
         } while (remaining_bytes && cluster >= 3 && cluster <= 0xffef);
 
@@ -194,10 +213,10 @@ static ssize_t FAT16_read(struct File *file, void *buf, const size_t count, cons
 
         const uint16_t root_cluster = ((struct FAT16_Inode *) sb->sb.s_root->inode)->first_cluster;
         if (inode->first_cluster == root_cluster) {
-                return read_root_directory(file, buf, count, file_offset);
+                return FAT16_read_root_directory(file, buf, count, file_offset);
         }
 
-        return follow_fat_chain(file, buf, count, file_offset);
+        return FAT16_follow_fat_chain(file, buf, count, file_offset);
 }
 
 static struct FAT16_DirectoryEntry *FAT16_find_file_dentry(
@@ -261,7 +280,7 @@ static struct Dentry *FAT16_lookup_root_directory(struct FAT16_Inode *parent, st
         char *buf = kmalloc(sizeof(char) * 512);
 
         while (file_wrapper.f_pos < parent->vfs_inode.i_size - 1) {
-                read_root_directory(&file_wrapper, buf, 512, file_wrapper.f_pos);
+                FAT16_read_root_directory(&file_wrapper, buf, 512, file_wrapper.f_pos);
 
                 struct FAT16_DirectoryEntry *dirent;
                 if ((dirent = FAT16_find_file_dentry(buf, 512, file))) {
@@ -298,17 +317,64 @@ static struct Dentry *FAT16_lookup(struct VFS_Inode *parent, struct Dentry *file
         return nullptr;
 }
 
+static uint16_t FAT16_find_next_free_cluster(struct FAT16_SuperBlock *sb) {
+        const auto sb_op = (struct FAT16_SuperBlockOperations *) sb->sb.s_op;
+        const auto cluster_count = sb->boot_record.small_part_sectors_count / sb->boot_record.sectors_per_cluster;
 
-static ssize_t FAT16_write(struct File *file, void *buf, size_t count, off_t file_offset) {
-        struct FAT16_Inode *inode = (struct FAT16_Inode *) file->f_inode;
+        for (int i = 0; i < cluster_count / FAT_SECTOR_CACHE_SIZE; ++i) {
+                sb_op->hd_op.read_block(sb->fat_first_sector,
+                                        sizeof(uint16_t) * FAT_SECTOR_CACHE_SIZE,
+                                        (char *) sb->FAT_sector_cache
+                );
+                sb->FAT_cached_sector = i;
+
+                for (int j = 0; j < FAT_SECTOR_CACHE_SIZE; ++j) {
+                        if (sb->FAT_sector_cache[j] == 0x0000) {
+                                return i * FAT_SECTOR_CACHE_SIZE + j;
+                        }
+                }
+        }
+
+        return 0;
+}
+
+static int FAT16_mark_cluster(struct FAT16_SuperBlock *sb, const uint16_t cluster, const uint16_t value) {
+        const auto sb_op = (struct FAT16_SuperBlockOperations *) sb->sb.s_op;
+        const uint16_t current_cluster_FAT_sector = cluster / FAT_SECTOR_CACHE_SIZE;
+        const uint16_t current_cluster_position_in_FAT_sector = cluster % FAT_SECTOR_CACHE_SIZE;
+
+        const uint16_t FAT_cached_range_start = sb->FAT_cached_sector * FAT_SECTOR_CACHE_SIZE;
+        const uint16_t FAT_cached_range_end = (sb->FAT_cached_sector + 1) * FAT_SECTOR_CACHE_SIZE;
+
+        if (!(FAT_cached_range_start <= cluster && cluster < FAT_cached_range_end)) {
+                sb_op->hd_op.read_block(sb->fat_first_sector + current_cluster_FAT_sector,
+                                        sizeof(uint16_t) * FAT_SECTOR_CACHE_SIZE,
+                                        (char *) sb->FAT_sector_cache
+                );
+                sb->FAT_cached_sector = current_cluster_FAT_sector;
+        }
+
+        sb->FAT_sector_cache[current_cluster_position_in_FAT_sector] = value;
+        sb_op->hd_op.write_block(
+                sb->fat_first_sector + current_cluster_FAT_sector,
+                sizeof(uint16_t) * FAT_SECTOR_CACHE_SIZE,
+                (char *) sb->FAT_sector_cache
+        );
+
+        return 0;
+}
+
+static ssize_t FAT16_write(struct File *file, void *buf, const size_t count, const off_t file_offset) {
+        const auto inode = (struct FAT16_Inode *) file->f_inode;
         if (inode->vfs_inode.parent != inode->vfs_inode.i_sb->s_root->inode) {
                 return -EINVAL;
         }
 
-        auto rootdir = (struct FAT16_Inode *) inode->vfs_inode.parent;
+        const auto rootdir = (struct FAT16_Inode *) inode->vfs_inode.parent;
         const auto sb = (struct FAT16_SuperBlock *) rootdir->vfs_inode.i_sb;
         const auto sb_op = (struct FAT16_SuperBlockOperations *) sb->sb.s_op;
 
+        // this check is to be removed; this is valid for single sector write.
         if (count - file_offset > sb->boot_record.bytes_per_sector * sb->boot_record.sectors_per_cluster) {
                 return -EINVAL;
         }
@@ -328,14 +394,15 @@ static ssize_t FAT16_write(struct File *file, void *buf, size_t count, off_t fil
         //get root directory entries
         char *rootbuf = kmalloc(rootdir->vfs_inode.i_size);
         struct File file_wrapper = {.f_inode = inode->vfs_inode.parent, .f_pos = 0};
-        if (read_root_directory(&file_wrapper, rootbuf, rootdir->vfs_inode.i_size, 0) != rootdir->vfs_inode.i_size) {
+        if (FAT16_read_root_directory(&file_wrapper, rootbuf, rootdir->vfs_inode.i_size, 0) != rootdir->vfs_inode.
+            i_size) {
                 kfree(rootbuf);
                 return -1; //why would that happen?
         }
 
         //update root directory entries
         const auto dentry = FAT16_find_file_dentry_with_first_cluster(rootbuf, 512, inode->first_cluster);
-        if (dentry) {
+        if (dentry) { //fixme: is root directory file entry updated? I.e. is size of that file updated?
                 dentry->file_size = to_write;
                 sb_op->hd_op.write_block(rootdir->first_cluster, rootdir->vfs_inode.i_size, rootbuf);
                 inode->vfs_inode.i_size = to_write;
@@ -359,19 +426,19 @@ static int FAT16_create_file(struct VFS_Inode *parent, struct Dentry *new_file, 
         }
 
 
-        struct FAT16_Inode *rootdir = (struct FAT16_Inode *) parent;
+        const struct FAT16_Inode *rootdir = (struct FAT16_Inode *) parent;
         struct FAT16_SuperBlock *sb = (struct FAT16_SuperBlock *) rootdir->vfs_inode.i_sb;
 
         struct Dentry file = {.name = new_file->name};
         if (FAT16_lookup(parent, &file, 0)) {
-                //todo: remove from owned inodes...
                 return -EEXIST;
         }
 
         char *root_dir_entries = kmalloc(rootdir->vfs_inode.i_size);
-        struct File file_wrapper = {.f_inode = parent, .f_pos = 0};
-        if (read_root_directory(&file_wrapper, root_dir_entries, rootdir->vfs_inode.i_size, 0) != rootdir->vfs_inode.
-            i_size) {
+        struct File rootdir_file_wrapper = {.f_inode = parent, .f_pos = 0};
+        if (FAT16_read_root_directory(&rootdir_file_wrapper, root_dir_entries, rootdir->vfs_inode.i_size, 0)
+            != rootdir->vfs_inode.i_size
+        ) {
                 kfree(root_dir_entries);
                 return -1; //why would that happen?
         }
@@ -383,47 +450,26 @@ static int FAT16_create_file(struct VFS_Inode *parent, struct Dentry *new_file, 
                         break;
                 }
         }
-
         if (root_free_direntry < 0) {
                 kfree(root_dir_entries);
                 return -ENOMEM;
         }
 
 
-        //find free FAT, currently for one cluster...
-        const auto sb_op = (struct FAT16_SuperBlockOperations *) sb->sb.s_op;
-        sb_op->hd_op.read_block(sb->fat_first_sector, 512, (char *) sb->FAT_sector_cache);
-        int allocated_cluster = -1;
-        for (int i = 0; i < 256; ++i) {
-                if (sb->FAT_sector_cache[i] == 0x0000) {
-                        sb->FAT_sector_cache[i] = 0xffff;
-                        // --- UNSAFE WRITE ---
-                        sb_op->hd_op.write_block(sb->fat_first_sector, 512, (char *) sb->FAT_sector_cache);
-                        allocated_cluster = i;
-                        break;
-                }
-        }
-
-        if (allocated_cluster < 0) {
+        const uint16_t first_cluster = FAT16_find_next_free_cluster(sb);
+        if (!first_cluster) {
                 kfree(root_dir_entries);
                 return -ENOMEM;
         }
+        FAT16_mark_cluster(sb, first_cluster, 0xffff);
 
 
-        struct FAT16_DirectoryEntry dirent = {0};
-        const char *dot = strchr(new_file->name, '.');
-        const size_t filename_len = dot ? dot - new_file->name : 0;
-        const size_t write_filename_len = filename_len > 8 ? 8 : filename_len;
-        memcpy(dirent.filename, new_file->name, write_filename_len);
-        size_t extension_len = dot ? strlen(dot + 1) : 0;
-        memcpy(dirent.extension, dot + 1, extension_len);
-        dirent.first_cluster = allocated_cluster;
-        *(struct FAT16_DirectoryEntry *) &root_dir_entries[32 * root_free_direntry] = dirent;
-        sb_op->hd_op.write_block(rootdir->first_cluster, rootdir->vfs_inode.i_size, root_dir_entries);
-        // --- UNSAFE WRITE ---
+        const auto dirent = (struct FAT16_DirectoryEntry *) &root_dir_entries[32 * root_free_direntry];
+        FAT16_encode_entry_name(new_file->name, dirent);
+        dirent->first_cluster = first_cluster;
+        FAT16_write_root_directory(&rootdir_file_wrapper, root_dir_entries, rootdir->vfs_inode.i_size);
 
         kfree(root_dir_entries);
-
 
         return 0;
 }
@@ -532,6 +578,20 @@ int FAT16_decode_entry_name(struct FAT16_DirectoryEntry *entry, char *buf) {
         }
         buf[name_last_char] = 0;
 
+
+        return 0;
+}
+
+int FAT16_encode_entry_name(const char *name, struct FAT16_DirectoryEntry *entry) {
+        memset(entry, 0x20, 11); // all names in FAT16 are 8+3, for shorter names remaining characters are 0x20
+
+        const char *dot = strchr(name, '.');
+        const size_t filename_len = dot ? dot - name : 0;
+        const size_t write_filename_len = filename_len > 8 ? 8 : filename_len;
+        memcpy(entry->filename, name, write_filename_len);
+
+        const size_t extension_len = dot ? strlen(dot + 1) : 0;
+        memcpy(entry->extension, dot + 1, extension_len);
 
         return 0;
 }
