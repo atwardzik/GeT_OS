@@ -42,8 +42,8 @@ static struct VFS_Inode *get_parent_directory(const char *name) {
                         .name = token,
                 };
 
-                struct Dentry *result = inode->i_op->lookup(inode, &dentry, 0);
-                if (!result || !(result->inode->i_mode & S_IFDIR)) {
+                const struct Dentry *result = inode->i_op->lookup(inode, &dentry, 0);
+                if (result != &dentry || !(result->inode->i_mode & S_IFDIR)) {
                         kfree(path);
                         return nullptr;
                 }
@@ -75,7 +75,7 @@ static struct VFS_Inode *get_file(struct VFS_Inode *parent, const char *name) {
         }
 
         struct Dentry dentry = {.name = name};
-        if (parent->i_op->lookup(parent, &dentry, 0)) {
+        if (parent->i_op->lookup(parent, &dentry, 0) == &dentry) {
                 return dentry.inode;
         }
 
@@ -239,11 +239,24 @@ int sys_read(int file, char *ptr, int len) {
         }
 
         struct File *current_file = current_process->files.fdtable[file];
-        if (current_file->f_op->read) {
-                return current_file->f_op->read(current_file, ptr, len, current_file->f_pos);
+        if (!current_file->f_op->read) {
+                return -1;
         }
 
-        return -1;
+
+        ssize_t read_bytes = current_file->f_op->read(current_file, ptr, len, current_file->f_pos);
+        if (read_bytes < 0) {
+                return read_bytes;
+        }
+
+        if (current_file->f_pos + len > current_file->f_inode->i_size) {
+                current_file->f_pos = current_file->f_inode->i_size;
+        }
+        else {
+                current_file->f_pos += len;
+        }
+
+        return read_bytes;
 }
 
 int sys_write(const int file, char *ptr, const int len) {
@@ -257,7 +270,7 @@ int sys_write(const int file, char *ptr, const int len) {
 
         struct File *current_file = current_process->files.fdtable[file];
         if (current_file->f_op->write) {
-                return current_file->f_op->write(current_file, ptr, len, current_file->f_pos);
+                return current_file->f_op->write(current_file, ptr, len, current_file->f_pos); //fixme: update f_pos
         }
 
         return -1;
@@ -320,19 +333,21 @@ int sys_readdir(int dirfd, struct DirectoryEntry *directory_entry) {
 
         const char *fs_name = parent_inode->i_sb->name;
         if (strcmp(fs_name, "ramfs") == 0) {
-                size_t bytes_left = parent_inode->i_size - parent_handler->f_pos;
+                const size_t bytes_left = parent_inode->i_size - parent_handler->f_pos;
                 if (bytes_left < sizeof(struct DirectoryEntry)) {
                         return 0;
                 }
 
                 char buf[sizeof(struct DirectoryEntry)];
-                parent_handler->f_op->read(parent_handler, buf, sizeof(struct DirectoryEntry), parent_handler->f_pos);
+                sys_read(dirfd, buf, sizeof(struct DirectoryEntry));
                 *directory_entry = *(struct DirectoryEntry *) buf;
         }
         else if (strcmp(fs_name, "fat16") == 0) {
                 char buf[32];
         next_dir:
-                parent_handler->f_op->read(parent_handler, buf, 32, parent_handler->f_pos);
+                if (sys_read(dirfd, buf, 32) <= 0) {
+                        return 0;
+                }
 
                 const auto entry = (struct FAT16_DirectoryEntry *) buf;
 
@@ -385,7 +400,7 @@ int sys_fstat(int fd, struct stat *st) {
 }
 
 char *sys_getcwd(char *buf, unsigned int len) {
-        struct Process *current_process = scheduler_get_current_process();
+        const struct Process *current_process = scheduler_get_current_process();
         struct VFS_Inode *inode = current_process->pwd;
         struct VFS_Inode *parent = inode->parent;
 
@@ -397,8 +412,9 @@ char *sys_getcwd(char *buf, unsigned int len) {
                         .inode = inode,
                 };
 
+                //fixme: this lookup depends on inode and not on name of the directory, what breaks under FAT16
                 const struct Dentry *res = parent->i_op->lookup(parent, &dentry, 0);
-                if (strlen(res->name) > i) {
+                if (res != &dentry || strlen(res->name) > i) {
                         return nullptr;
                 }
                 i -= strlen(res->name);

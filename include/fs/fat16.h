@@ -36,7 +36,7 @@ struct Dentry *FAT16_mount(
         struct Dentry *parent_dir, uint32_t block_number, const struct HardDriveOperations *hd_op
 );
 
-int FAT16_decode_entry_name(struct FAT16_DirectoryEntry *entry, char *buf);
+int FAT16_decode_entry_name(const struct FAT16_DirectoryEntry *entry, char *buf);
 
 int FAT16_encode_entry_name(const char *name, struct FAT16_DirectoryEntry *entry);
 

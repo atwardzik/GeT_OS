@@ -17,7 +17,7 @@ static inline void *ERR_PTR(uint32_t error) {
 }
 
 static inline bool IS_ERR(const void *ptr) {
-        return (uint32_t) ptr >= (uint32_t) -MAX_ERRNO;
+        return (uint32_t) ptr >= (uint32_t) -MAX_ERRNO || (uint32_t) ptr <= (uint32_t) MAX_ERRNO;
 }
 
 [[noreturn]] void kernel_panic(const char *msg, const char *file, int line, const char *func);

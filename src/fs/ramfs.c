@@ -146,7 +146,6 @@ ssize_t ramfs_write(struct File *file, void *buf, size_t count, off_t file_offse
         }
 
         inode_ptr->vfs_inode.i_size += count;
-        file->f_pos += count;
 
         return count;
 }
@@ -163,8 +162,6 @@ ssize_t ramfs_read(struct File *file, void *buf, size_t count, off_t file_offset
 
                 offset += 1;
         }
-
-        file->f_pos += offset;
 
         return offset;
 }
