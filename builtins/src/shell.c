@@ -196,16 +196,23 @@ void run_program(const char *cmd) {
         }
         program_args[i] = nullptr;
 
-        int fd = open(cmd, O_BINARY, 0);
-        if (fd < 0) {
-                char buf[64] = {"bin/"};
-                memcpy(buf + 4, cmd, strlen(cmd));
+        int fd = -1;
+        const char executable_locations[3][20] = {"./", "bin/", "/mnt/disk0/"};
+        for (i = 0; i < 3; ++i) {
+                char buf[64] = {};
+                const int path_len = strlen(executable_locations[i]);
 
+                memcpy(buf, executable_locations[i], strlen(executable_locations[i]));
+
+                memcpy(buf + path_len, cmd, strlen(cmd));
                 fd = open(buf, O_BINARY, 0);
-                if (fd < 0) {
-                        dprintf(2, "gsh: command not found: %s\n", cmd);
-                        return;
+                if (fd > 0) {
+                        break;
                 }
+        }
+        if (fd < 0) {
+                dprintf(2, "gsh: command not found: %s\n", cmd);
+                return;
         }
 
         spawn(fd, nullptr, nullptr, (char * const *) program_args, nullptr);
