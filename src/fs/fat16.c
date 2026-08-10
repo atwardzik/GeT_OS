@@ -93,8 +93,8 @@ static struct VFS_Inode *FAT16_alloc_inode(struct SuperBlock *sb) {
 
 static void FAT16_destroy_inode(struct VFS_Inode *) {}
 
-static struct FAT16_DirectoryEntries FAT16_get_existing_rootdir_dentries(const struct FAT16_Inode *parent) {
-        const auto sb = (struct FAT16_SuperBlock *) parent->vfs_inode.i_sb;
+static struct FAT16_DirectoryEntries FAT16_get_existing_rootdir_dentries(const struct FAT16_Inode *inode) {
+        const auto sb = (struct FAT16_SuperBlock *) inode->vfs_inode.i_sb;
         const auto sb_op = (struct FAT16_SuperBlockOperations *) sb->sb.s_op;
 
         const int bytes_per_cluster = sb->boot_record.bytes_per_sector * sb->boot_record.sectors_per_cluster;
@@ -107,7 +107,7 @@ static struct FAT16_DirectoryEntries FAT16_get_existing_rootdir_dentries(const s
         }
 
         do {
-                if (sb_op->hd_op.read_block(parent->absolute_first_sector + offset / sb->boot_record.bytes_per_sector,
+                if (sb_op->hd_op.read_block(inode->absolute_first_sector + offset / sb->boot_record.bytes_per_sector,
                                             bytes_per_cluster,
                                             (void *) dentries.dentries + offset) != 0
                 ) {
@@ -131,28 +131,55 @@ static struct FAT16_DirectoryEntries FAT16_get_existing_rootdir_dentries(const s
                         return dentries;
                 }
                 dentries.dentries = new_dentries;
-        } while (offset < parent->vfs_inode.i_size);
+        } while (offset < inode->vfs_inode.i_size);
 
         return dentries;
 }
 
-static struct FAT16_DirectoryEntries FAT16_get_all_rootdir_dentries(const struct FAT16_Inode *parent) {
-        const auto sb = (struct FAT16_SuperBlock *) parent->vfs_inode.i_sb;
+static struct FAT16_DirectoryEntries FAT16_get_all_rootdir_dentries(const struct FAT16_Inode *inode) {
+        //fixme: it is not strictly necessary to get all entries every time, as it takes around 16KiB, instead add sufficient entries for new file creation (ensure existence of empty dentry)
+        const auto sb = (struct FAT16_SuperBlock *) inode->vfs_inode.i_sb;
         const auto sb_op = (struct FAT16_SuperBlockOperations *) sb->sb.s_op;
 
-        struct FAT16_DirectoryEntries dentries = {.dentries = kmalloc(parent->vfs_inode.i_size), .count = 0};
+        struct FAT16_DirectoryEntries dentries = {.dentries = kmalloc(inode->vfs_inode.i_size), .count = 0};
         if (!dentries.dentries) {
                 return (struct FAT16_DirectoryEntries){.dentries = nullptr, .count = 0};
         }
 
-        if (sb_op->hd_op.read_block(parent->absolute_first_sector,
-                                    parent->vfs_inode.i_size,
+        if (sb_op->hd_op.read_block(inode->absolute_first_sector,
+                                    inode->vfs_inode.i_size,
                                     (void *) dentries.dentries) != 0
         ) {
                 return dentries;
         }
 
-        dentries.count = parent->vfs_inode.i_size / sizeof(struct FAT16_DirectoryEntry);
+        dentries.count = inode->vfs_inode.i_size / sizeof(struct FAT16_DirectoryEntry);
+        return dentries;
+}
+
+static ssize_t FAT16_read(struct File *file, void *buf, const size_t count, const off_t file_offset);
+
+static struct FAT16_DirectoryEntries FAT16_get_all_dentries(const struct FAT16_Inode *inode) {
+        struct FAT16_DirectoryEntries dentries = {0};
+        if (inode == (struct FAT16_Inode *) inode->vfs_inode.i_sb->s_root->inode) {
+                dentries = FAT16_get_all_rootdir_dentries(inode);
+        }
+        else {
+                void *entries = kmalloc(inode->vfs_inode.i_size);
+                if (!entries) {
+                        return (struct FAT16_DirectoryEntries){.dentries = nullptr, .count = 0};
+                }
+
+                struct File parent_wrapper = {.f_inode = (struct VFS_Inode *) inode};
+                if (FAT16_read(&parent_wrapper, entries, inode->vfs_inode.i_size, 0) != inode->vfs_inode.i_size) {
+                        return (struct FAT16_DirectoryEntries){.dentries = nullptr, .count = 0};
+                        //why would that happen?
+                }
+
+                dentries.dentries = entries;
+                dentries.count = inode->vfs_inode.i_size / sizeof(struct FAT16_DirectoryEntry);
+        }
+
         return dentries;
 }
 
@@ -205,10 +232,7 @@ static ssize_t FAT16_follow_fat_chain(struct File *file, void *buf, const size_t
                 return -ENOMEM;
         }
 
-        const size_t bytes_to_read = file_offset + count > inode->vfs_inode.i_size
-                                             ? inode->vfs_inode.i_size - file_offset
-                                             : count;
-        size_t remaining_bytes = bytes_to_read;
+        size_t remaining_bytes = count;
         do {
                 const uint16_t physical_sector = sb->data_region_start +
                                                  ((cluster - 2) * sb->boot_record.sectors_per_cluster);
@@ -231,7 +255,7 @@ static ssize_t FAT16_follow_fat_chain(struct File *file, void *buf, const size_t
         } while (remaining_bytes && cluster >= 3 && cluster <= 0xffef);
 
         kfree(temp_buf);
-        return bytes_to_read - remaining_bytes;
+        return count - remaining_bytes;
 }
 
 static ssize_t FAT16_read(struct File *file, void *buf, const size_t count, const off_t file_offset) {
@@ -253,7 +277,11 @@ static ssize_t FAT16_read(struct File *file, void *buf, const size_t count, cons
                 return to_copy;
         }
 
-        return FAT16_follow_fat_chain(file, buf, count, file_offset);
+        const size_t bytes_to_read = file_offset + count > inode->vfs_inode.i_size
+                                             ? inode->vfs_inode.i_size - file_offset
+                                             : count;
+
+        return FAT16_follow_fat_chain(file, buf, bytes_to_read, file_offset);
 }
 
 static struct FAT16_DirectoryEntry *FAT16_find_file_dentry_with_first_cluster(
@@ -277,24 +305,7 @@ static struct FAT16_DirectoryEntry *FAT16_find_file_dentry_with_first_cluster(
 static struct Dentry *FAT16_lookup(struct VFS_Inode *parent, struct Dentry *file, unsigned int) {
         const struct FAT16_Inode *inode = (struct FAT16_Inode *) parent;
 
-        struct FAT16_DirectoryEntries dentries = {0};
-        if (parent == inode->vfs_inode.i_sb->s_root->inode) {
-                dentries = FAT16_get_all_rootdir_dentries((struct FAT16_Inode *) parent);
-        }
-        else {
-                void *entries = kmalloc(parent->i_size);
-                if (!entries) {
-                        return ERR_PTR(-ENOMEM);
-                }
-
-                struct File parent_wrapper = {.f_inode = parent};
-                if (FAT16_read(&parent_wrapper, entries, parent->i_size, 0) != parent->i_size) {
-                        return nullptr; //why would that happen?
-                }
-
-                dentries.dentries = entries;
-                dentries.count = parent->i_size / sizeof(struct FAT16_DirectoryEntry);
-        }
+        const struct FAT16_DirectoryEntries dentries = FAT16_get_all_dentries(inode);
         if (dentries.count == 0) {
                 kfree(dentries.dentries);
                 return ERR_PTR(-ENOMEM);
@@ -376,7 +387,7 @@ static int FAT16_mark_cluster(struct FAT16_SuperBlock *sb, const uint16_t cluste
 }
 
 static int write_consecutive_sectors(
-        struct FAT16_Inode *inode, uint32_t physical_sector, void *buf, const size_t count, const off_t offset
+        const struct FAT16_Inode *inode, uint32_t physical_sector, void *buf, const size_t count, off_t offset
 ) {
         const auto sb = (struct FAT16_SuperBlock *) inode->vfs_inode.i_sb;
         const auto sb_op = (struct FAT16_SuperBlockOperations *) sb->sb.s_op;
@@ -386,12 +397,12 @@ static int write_consecutive_sectors(
 
         while (offset >= bytes_per_sector) {
                 physical_sector += 1;
+                offset -= bytes_per_sector;
         }
 
 
         char *written_sector = kmalloc(bytes_per_sector);
         sb_op->hd_op.read_block(physical_sector, bytes_per_sector, written_sector);
-        //if offset || offset + count < bytes_per_sector
 
         size_t to_write = offset + count > bytes_per_sector ? bytes_per_sector - offset : count;
         memcpy(written_sector + offset, buf, to_write);
@@ -437,7 +448,7 @@ static ssize_t FAT16_write(struct File *file, void *buf, const size_t count, con
         const auto sb = (struct FAT16_SuperBlock *) parent->vfs_inode.i_sb;
         const auto sb_op = (struct FAT16_SuperBlockOperations *) sb->sb.s_op;
 
-        struct FAT16_DirectoryEntries dentries = FAT16_get_existing_rootdir_dentries(parent);
+        const struct FAT16_DirectoryEntries dentries = FAT16_get_all_dentries(parent);
         if (dentries.count == 0) {
                 kfree(dentries.dentries);
                 return -1; //why would that happen?
@@ -501,25 +512,7 @@ static int FAT16_create_file(struct FAT16_Inode *parent, struct Dentry *new_file
                 return -EEXIST;
         }
 
-        struct FAT16_DirectoryEntries dentries = {0};
-        if (parent == (struct FAT16_Inode *) inode->vfs_inode.i_sb->s_root->inode) {
-                dentries = FAT16_get_all_rootdir_dentries(parent);
-        }
-        else {
-                void *entries = kmalloc(parent->vfs_inode.i_size);
-                if (!entries) {
-                        return -ENOMEM;
-                }
-
-                struct File parent_wrapper = {.f_inode = (struct VFS_Inode *) parent};
-                if (FAT16_read(&parent_wrapper, entries, parent->vfs_inode.i_size, 0) != parent->vfs_inode.i_size) {
-                        return -1; //why would that happen?
-                }
-
-                dentries.dentries = entries;
-                dentries.count = parent->vfs_inode.i_size / sizeof(struct FAT16_DirectoryEntry);
-        }
-
+        const struct FAT16_DirectoryEntries dentries = FAT16_get_all_dentries(parent);
 
         const int free_direntry = find_free_dentry(&dentries);
         if (free_direntry < 0) {
@@ -544,8 +537,9 @@ static int FAT16_create_file(struct FAT16_Inode *parent, struct Dentry *new_file
         struct File parent_wrapper = {.f_inode = (struct VFS_Inode *) parent};
         FAT16_write(&parent_wrapper, dentries.dentries, dentries.count * sizeof(struct FAT16_DirectoryEntry), 0);
 
-        kfree(dentries.dentries);
+        inode->vfs_inode.parent = (struct VFS_Inode *) parent;
 
+        kfree(dentries.dentries);
         return 0;
 }
 
