@@ -439,9 +439,11 @@ static int adjust_allocated_clusters(
         const auto bytes_per_sector = sb->boot_record.sectors_per_cluster * sb->boot_record.bytes_per_sector;
 
         uint16_t cluster = first_cluster;
-        int chain_depth = 0;
-        while (cluster < 0xfff0) {
-                cluster = FAT16_find_next_cluster(sb, cluster);
+        uint16_t next_cluster = FAT16_find_next_cluster(sb, cluster);
+        int chain_depth = cluster > 3 && cluster < 0xfff0 ? 1 : 0;
+        while (chain_depth && next_cluster < 0xfff0) {
+                cluster = next_cluster;
+                next_cluster = FAT16_find_next_cluster(sb, cluster);
                 chain_depth += 1;
         }
         while (expected_size >= chain_depth * bytes_per_sector) {
@@ -525,11 +527,11 @@ static ssize_t FAT16_write(struct File *file, void *buf, const size_t count, con
                 if (to_write < bytes_per_sector) {
                         sb_op->hd_op.read_block(physical_sector, bytes_per_sector, cluster_buf);
                 }
-                memcpy(cluster_buf + cluster_offset, buf + total_written_bytes, to_write);
+                memcpy(cluster_buf, buf + total_written_bytes, to_write);
 
                 sb_op->hd_op.write_block(physical_sector, bytes_per_sector, cluster_buf);
 
-                total_written_bytes += bytes_per_sector;
+                total_written_bytes += to_write;
         }
 
         kfree(cluster_buf);
