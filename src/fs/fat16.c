@@ -252,7 +252,7 @@ static ssize_t FAT16_follow_fat_chain(struct File *file, void *buf, const size_t
 
                 cluster = FAT16_find_next_cluster(sb, cluster);
                 //fixme: what if file_offset + count > filesize?
-        } while (remaining_bytes && cluster >= 3 && cluster <= 0xffef);
+        } while (remaining_bytes && cluster >= 3 && cluster < 0xfff0);
 
         kfree(temp_buf);
         return count - remaining_bytes;
@@ -401,11 +401,13 @@ static int write_consecutive_sectors(
         }
 
 
-        char *written_sector = kmalloc(bytes_per_sector);
-        sb_op->hd_op.read_block(physical_sector, bytes_per_sector, written_sector);
+        char *sector_buf = kmalloc(bytes_per_sector);
+        if (offset || offset + count < bytes_per_sector) {
+                sb_op->hd_op.read_block(physical_sector, bytes_per_sector, sector_buf);
+        }
 
         size_t to_write = offset + count > bytes_per_sector ? bytes_per_sector - offset : count;
-        memcpy(written_sector + offset, buf, to_write);
+        memcpy(sector_buf + offset, buf, to_write);
 
         sb_op->hd_op.write_block(physical_sector, bytes_per_sector, buf);
         total_written_bytes = to_write;
@@ -418,17 +420,42 @@ static int write_consecutive_sectors(
                                    ? count - total_written_bytes
                                    : bytes_per_sector;
                 if (to_write < bytes_per_sector) {
-                        sb_op->hd_op.read_block(physical_sector, bytes_per_sector, written_sector);
+                        sb_op->hd_op.read_block(physical_sector, bytes_per_sector, sector_buf);
                 }
-                memcpy(written_sector, buf + total_written_bytes, to_write);
+                memcpy(sector_buf, buf + total_written_bytes, to_write);
 
-                sb_op->hd_op.write_block(physical_sector, bytes_per_sector, buf + total_written_bytes);
+                sb_op->hd_op.write_block(physical_sector, bytes_per_sector, sector_buf);
 
                 total_written_bytes += bytes_per_sector;
         }
 
-        kfree(written_sector);
+        kfree(sector_buf);
         return total_written_bytes > count ? count : total_written_bytes;
+}
+
+static int adjust_allocated_clusters(
+        struct FAT16_SuperBlock *sb, const uint16_t first_cluster, const size_t expected_size
+) {
+        const auto bytes_per_sector = sb->boot_record.sectors_per_cluster * sb->boot_record.bytes_per_sector;
+
+        uint16_t cluster = first_cluster;
+        int chain_depth = 0;
+        while (cluster < 0xfff0) {
+                cluster = FAT16_find_next_cluster(sb, cluster);
+                chain_depth += 1;
+        }
+        while (expected_size >= chain_depth * bytes_per_sector) {
+                const uint16_t new_cluster = FAT16_find_next_free_cluster(sb);
+
+                FAT16_mark_cluster(sb, cluster, new_cluster);
+                FAT16_mark_cluster(sb, new_cluster, 0xffff);
+
+                cluster = new_cluster;
+                chain_depth += 1;
+        }
+
+        //todo: what about the opposite situation? I.e. shrinking the file
+        return 0;
 }
 
 static ssize_t FAT16_write(struct File *file, void *buf, const size_t count, const off_t file_offset) {
@@ -459,34 +486,68 @@ static ssize_t FAT16_write(struct File *file, void *buf, const size_t count, con
                 return -1;
         }
 
-        //resize file if need be
-        if (file_offset + count >= dentry->file_size) {
-                kfree(dentries.dentries);
-                return -EINVAL;
+
+        adjust_allocated_clusters(sb, inode->first_cluster, file_offset + count);
+
+        //write file contents to the cluster chain
+        const auto bytes_per_sector = sb->boot_record.sectors_per_cluster * sb->boot_record.bytes_per_sector;
+        uint16_t current_cluster = inode->first_cluster;
+        off_t cluster_offset = file_offset;
+        while (cluster_offset > bytes_per_sector) {
+                current_cluster = FAT16_find_next_cluster(sb, current_cluster);
+                cluster_offset -= bytes_per_sector;
         }
 
-        //write file contents to the cluster
-        char *current_file_block = kmalloc(512);
-        const uint32_t physical_sector = sb->data_region_start + (inode->first_cluster - 2) * sb->boot_record.
-                                         sectors_per_cluster;
-        sb_op->hd_op.read_block(physical_sector, 512, current_file_block);
-        const size_t available = 512 - file->f_pos;
-        const size_t to_write = count > available ? available : count;
-        memcpy(current_file_block + file->f_pos, buf, to_write);
+        int total_written_bytes = 0;
+        char *cluster_buf = kmalloc(bytes_per_sector);
+        uint32_t physical_sector = sb->data_region_start +
+                                   (current_cluster - 2) * sb->boot_record.sectors_per_cluster;
+        if (cluster_offset || cluster_offset + count < bytes_per_sector) {
+                sb_op->hd_op.read_block(physical_sector, bytes_per_sector, cluster_buf);
+        }
 
-        sb_op->hd_op.write_block(physical_sector, 512, buf); //fixme: unsafe boundaries, writing garbage
-        kfree(current_file_block);
+        const size_t available = bytes_per_sector - cluster_offset;
+        size_t to_write = count > available ? available : count;
+        memcpy(cluster_buf + cluster_offset, buf, to_write);
 
-        //update root directory entries
-        dentry->file_size = to_write;
-        // sb_op->hd_op.write_block(parent->first_cluster, parent->vfs_inode.i_size, rootbuf);
-        inode->vfs_inode.i_size = to_write;
-        file->f_pos += to_write;
+        sb_op->hd_op.write_block(physical_sector, bytes_per_sector, cluster_buf);
+        total_written_bytes += to_write;
+
+        while (total_written_bytes < count) {
+                current_cluster = FAT16_find_next_cluster(sb, current_cluster);
+                physical_sector = sb->data_region_start +
+                                  (current_cluster - 2) * sb->boot_record.sectors_per_cluster;
+
+
+                to_write = count - total_written_bytes < bytes_per_sector
+                                   ? count - total_written_bytes
+                                   : bytes_per_sector;
+                if (to_write < bytes_per_sector) {
+                        sb_op->hd_op.read_block(physical_sector, bytes_per_sector, cluster_buf);
+                }
+                memcpy(cluster_buf + cluster_offset, buf + total_written_bytes, to_write);
+
+                sb_op->hd_op.write_block(physical_sector, bytes_per_sector, cluster_buf);
+
+                total_written_bytes += bytes_per_sector;
+        }
+
+        kfree(cluster_buf);
+
+        //update parent (root) directory entries
+        inode->vfs_inode.i_size = file_offset + total_written_bytes;
+        dentry->file_size = file_offset + total_written_bytes;
+        write_consecutive_sectors(parent,
+                                  parent->absolute_first_sector, //fixme: only valid for rootdir!
+                                  dentries.dentries,
+                                  dentries.count * sizeof(struct FAT16_DirectoryEntry),
+                                  0
+        );
         //TODO: SAVE INTO ROOTDIR!
         kfree(dentries.dentries);
 
 
-        return to_write;
+        return total_written_bytes;
 }
 
 static int find_free_dentry(const struct FAT16_DirectoryEntries *dentries) {
@@ -653,15 +714,22 @@ int FAT16_decode_entry_name(const struct FAT16_DirectoryEntry *entry, char *buf)
 }
 
 int FAT16_encode_entry_name(const char *name, struct FAT16_DirectoryEntry *entry) {
+        char *tmp_str = kmalloc(strlen(name) + 1);
+        for (int i = 0; i < strlen(name) + 1; ++i) {
+                tmp_str[i] = toupper(name[i]);;
+        }
+        tmp_str[strlen(name)] = 0;
+
         memset(entry, 0x20, 11); // all names in FAT16 are 8+3, for shorter names remaining characters are 0x20
 
-        const char *dot = strchr(name, '.');
-        const size_t filename_len = dot ? dot - name : 0;
+        const char *dot = strchr(tmp_str, '.');
+        const size_t filename_len = dot ? dot - tmp_str : 0;
         const size_t write_filename_len = filename_len > 8 ? 8 : filename_len;
-        memcpy(entry->filename, name, write_filename_len);
+        memcpy(entry->filename, tmp_str, write_filename_len);
 
         const size_t extension_len = dot ? strlen(dot + 1) : 0;
         memcpy(entry->extension, dot + 1, extension_len);
 
+        kfree(tmp_str);
         return 0;
 }

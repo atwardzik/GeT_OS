@@ -269,11 +269,14 @@ int sys_write(const int file, char *ptr, const int len) {
         }
 
         struct File *current_file = current_process->files.fdtable[file];
-        if (current_file->f_op->write) {
-                return current_file->f_op->write(current_file, ptr, len, current_file->f_pos); //fixme: update f_pos
+        if (!current_file->f_op->write) {
+                return -1;
         }
 
-        return -1;
+        size_t written_bytes = current_file->f_op->write(current_file, ptr, len, current_file->f_pos);
+        current_file->f_pos += written_bytes;
+
+        return written_bytes;
 }
 
 int sys_ioctl(int file, unsigned long request, void *arg) {
