@@ -33,7 +33,7 @@ constexpr uint8_t FAT16_ATTRIB_DIRECTORY = 16;
 constexpr uint8_t FAT16_ATTRIB_ACHIEVE = 32;
 
 struct Dentry *FAT16_mount(
-        struct Dentry *parent_dir, uint32_t block_number, const struct HardDriveOperations *hd_op
+        const struct Dentry *parent_dir, uint32_t block_number, const struct HardDriveOperations *hd_op
 );
 
 int FAT16_decode_entry_name(const struct FAT16_DirectoryEntry *entry, char *buf);

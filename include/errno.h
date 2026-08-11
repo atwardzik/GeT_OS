@@ -64,7 +64,8 @@
 #define ENOTCONN 128		/* Socket is not connected */
 #define ENOSOCKFREE 129         /* No sockets are free */
 #define EAFNOSUPPORT 130        /* Address family not supported */
+#define EDQUOT 131              /* Disk quota (size limit) exceeded */
 
-#define MAX_ERRNO 131
+#define MAX_ERRNO 132
 
 #endif //OS_ERRNO_H
