@@ -85,6 +85,10 @@ static struct FileOperations *i_fop;
 
 static struct VFS_Inode *FAT16_alloc_inode(struct SuperBlock *sb) {
         struct FAT16_Inode *inode = kmalloc(sizeof(*inode));
+        if (!inode) {
+                return nullptr;
+        }
+
         memset(inode, 0, sizeof(*inode));
         inode->vfs_inode.i_op = i_op;
         inode->vfs_inode.i_fop = i_fop;
@@ -298,6 +302,9 @@ static ssize_t FAT16_write_cluster_chain(struct File *file, void *buf, const siz
 
         int total_written_bytes = 0;
         char *cluster_buf = kmalloc(bytes_per_sector);
+        if (!cluster_buf) {
+                return -ENOMEM;
+        }
         uint32_t physical_sector = sb->data_region_start +
                                    (current_cluster - 2) * sb->boot_record.sectors_per_cluster;
         if (cluster_offset || cluster_offset + count < bytes_per_sector) {
@@ -443,6 +450,9 @@ static int write_consecutive_sectors(
 
 
         char *sector_buf = kmalloc(bytes_per_sector);
+        if (!sector_buf) {
+                return -ENOMEM;
+        }
         if (offset || offset + count < bytes_per_sector) {
                 sb_op->hd_op.read_block(physical_sector, bytes_per_sector, sector_buf);
         }
@@ -730,7 +740,11 @@ int FAT16_decode_entry_name(const struct FAT16_DirectoryEntry *entry, char *buf)
 }
 
 int FAT16_encode_entry_name(const char *name, struct FAT16_DirectoryEntry *entry) {
+        //todo: SFN
         char *tmp_str = kmalloc(strlen(name) + 1);
+        if (!tmp_str) {
+                return -ENOMEM;
+        }
         for (int i = 0; i < strlen(name) + 1; ++i) {
                 tmp_str[i] = toupper(name[i]);;
         }
