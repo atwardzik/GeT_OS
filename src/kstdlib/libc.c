@@ -791,3 +791,14 @@ int inet_aton(const char *host_address, struct in_addr *inp) {
 
         return 1;
 }
+
+/*
+ * time
+ */
+time_t time(time_t *tloc) {
+        SYSCALL_RETURN(time_t, TIME_SVC);
+}
+
+int stime(const time_t *t) {
+        SYSCALL_RETURN(int, STIME_SVC);
+}

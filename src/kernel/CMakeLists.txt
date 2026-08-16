@@ -3,6 +3,7 @@ add_library(kernel OBJECT
         proc.c
         ctx.S
         isr.S
+        time.c
         tty.c
 
         syscall_table.c

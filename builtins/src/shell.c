@@ -21,6 +21,7 @@ void echo(void);
 void rawecho(void);
 
 int main(void) {
+        chdir("/mnt/disk0/"); //for testing purposes only
         while (1) {
                 puts(" > ");
                 char buffer[256];

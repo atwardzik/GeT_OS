@@ -7,6 +7,7 @@
 #include "proc.h"
 #include "signal.h"
 #include "syscall_codes.h"
+#include "time.h"
 #include "fs/file.h"
 
 typedef uint32_t (*syscall_fn)(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t);
@@ -45,4 +46,7 @@ syscall_fn syscall_table[] = {
         [MALLOC_SVC] = (syscall_fn) sys_malloc,
         [REALLOC_SVC] = (syscall_fn) sys_realloc,
         [FREE_SVC] = (syscall_fn) sys_free,
+
+        [TIME_SVC] = (syscall_fn) sys_time,
+        [STIME_SVC] = (syscall_fn) sys_stime,
 };

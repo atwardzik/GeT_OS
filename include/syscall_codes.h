@@ -20,16 +20,15 @@
 #define FSTAT_SVC       12
 #define GETCWD_SVC      13
 
-#define GET_TIME_SVC    20
-#define GET_PID_SVC     21
-#define GET_PPID_SVC    22
-#define GET_PGID_SVC    23
-#define SET_PGID_SVC    24
-#define YIELD_SVC       25
-#define KILL_SVC        26
-#define SIGNAL_SVC      27
-#define SIGRETURN_SVC   28
-#define WAIT_SVC        29
+#define GET_PID_SVC     20
+#define GET_PPID_SVC    21
+#define GET_PGID_SVC    22
+#define SET_PGID_SVC    23
+#define YIELD_SVC       24
+#define KILL_SVC        25
+#define SIGNAL_SVC      26
+#define SIGRETURN_SVC   27
+#define WAIT_SVC        28
 
 #define SOCKET_SVC      30
 #define BIND_SVC        31
@@ -40,6 +39,9 @@
 #define MALLOC_SVC      40
 #define REALLOC_SVC     41
 #define FREE_SVC        42
+
+#define TIME_SVC        50
+#define STIME_SVC       51
 
 #define OS_INIT_SVC     255
 

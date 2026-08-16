@@ -296,6 +296,13 @@ int dprintf(int fd, const char *format, ...);
  * networking
  */
 
+/*
+ * time
+ */
+
+time_t time(time_t *tloc);
+
+int stime(const time_t *t);
 
 /*
  * Misc

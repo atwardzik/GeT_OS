@@ -380,7 +380,7 @@ static int active_close(struct File *socket_file) {
                 goto socket_close_ret;
         }
 
-        if (socket->index != 0) {
+        if (socket->index != 0 && socket->socket.mode == TCP) {
                 socket_command(socket->index, CMD_DISCON);
 
                 uint8_t con[1];
