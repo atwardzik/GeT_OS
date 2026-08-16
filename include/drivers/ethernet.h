@@ -9,4 +9,6 @@
 
 struct NetworkInterface *init_ethernet(void);
 
+bool ethernet_check_link_on(struct NetworkInterface *interface);
+
 #endif //OS_ETHERNET_H

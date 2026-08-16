@@ -129,6 +129,13 @@ int init_network(void) {
         printk_status_finish(0);
 
 
+        printk_status_init("Check link layer");
+        const int lnk_off = ethernet_check_link_on(eth0) ? 0 : 1;
+        printk_status_finish(lnk_off);
+        if (lnk_off) {
+                return -ENETDOWN;
+        }
+
         printk_status_init("Setting up network adapter");
         // TODO: dhcp protocol
         const char *ip_addr = "192.168.2.1";
@@ -156,6 +163,10 @@ int sys_socket(int domain, int type, int protocol) {
         struct Process *current_process = scheduler_get_current_process();
         if (current_process->files.count >= MAX_OPEN_FILE_DESCRIPTORS) {
                 return -EMFILE;
+        }
+
+        if (!ethernet_check_link_on(network_manager.interfaces[0])) {
+                return -ENETDOWN;
         }
 
         // TODO: make it dependent on network interfaces connected

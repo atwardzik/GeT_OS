@@ -30,6 +30,7 @@ static constexpr uint16_t SIPR = 0x000f;
 static constexpr uint16_t IMR = 0x0016;
 static constexpr uint16_t RTR = 0x0017;
 static constexpr uint16_t RCR = 0x0019;
+static constexpr uint16_t PHYSR0 = 0x003c;
 static constexpr uint16_t VERR_REG = 0x0080;
 
 #define SN_MR(socket) (0x0000 + 0x0100 * ((uint16_t) socket + 4))
@@ -711,4 +712,11 @@ struct NetworkInterface *init_ethernet(void) {
         memset(wiznet_network_interface.socket_interrupts, 0, sizeof(wiznet_network_interface.socket_interrupts));
 
         return (struct NetworkInterface *) &wiznet_network_interface;
+}
+
+bool ethernet_check_link_on(struct NetworkInterface *interface) {
+        uint8_t phy;
+        eth_read_mem(PHYSR0, &phy, 1);
+
+        return !(phy & (1 << 7));
 }
