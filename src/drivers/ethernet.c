@@ -276,7 +276,11 @@ open:
         uint8_t sr[1];
         eth_read_mem(SN_SR(socket->index), sr, 1);
         const enum SocketStatus status = sr[0];
-        if (!((status == SOCK_INIT && mode == TCP) || (status == SOCK_MACRAW && mode == MACRAW))) {
+        if (!(
+                (status == SOCK_INIT && mode == TCP) ||
+                (status == SOCK_UDP && mode == UDP) ||
+                (status == SOCK_MACRAW && mode == MACRAW)
+        )) {
                 goto open;
         }
 
@@ -334,6 +338,10 @@ static int connect_socket(struct Socket *sock, struct sockaddr *addr, size_t add
 
         eth_write_mem(SN_DIPR(socket->index), addr->sa_data + 2, 4);
         eth_write_mem(SN_DPORTR(socket->index), addr->sa_data, 2);
+
+        if (sock->mode == UDP) {
+                return 0;
+        }
 
         socket_command(socket->index, CMD_CONNECT);
 

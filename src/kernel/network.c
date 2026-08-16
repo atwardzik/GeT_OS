@@ -169,6 +169,13 @@ int sys_socket(int domain, int type, int protocol) {
                         }
                         res = socket->s_op->open(socket, TCP);
                         break;
+                case SOCK_DGRAM:
+                        socket = network_manager.interfaces[0]->create_socket();
+                        if (IS_ERR(socket)) {
+                                return -ENOSOCKFREE;
+                        }
+                        res = socket->s_op->open(socket, UDP);
+                        break;
                 case SOCK_RAW:
                         socket = network_manager.interfaces[0]->create_raw_socket();
                         if (IS_ERR(socket)) {
