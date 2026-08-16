@@ -472,9 +472,16 @@ static int read_rxbuf(struct WIZnetSocket *socket, uint8_t *buffer, const uint16
         eth_read_mem(SN_RX_RD(socket->index), offsets, 2);
         const uint16_t current_offset = ((offsets[0] << 8) | (offsets[1])) & socket->rxbuf_mask;
 
+        uint64_t time_begin, current_time;
+        ms_since_boot(&time_begin);
         uint8_t received[2];
-        eth_read_mem(SN_RX_RSR(socket->index), received, 2);
-        const uint16_t received_size = ((received[0] << 8) | (received[1]));
+        uint16_t received_size = 0;
+        do {
+                eth_read_mem(SN_RX_RSR(socket->index), received, 2);
+                received_size = ((received[0] << 8) | (received[1]));
+
+                ms_since_boot(&current_time);
+        } while (!received_size && current_time - time_begin < 100); //manual timeout, 100ms. Usually for UDP.
 
         uint16_t read_length;
         if (received_size > length) {
@@ -534,7 +541,7 @@ static int rx_frame(struct File *socket_file, void *buf, size_t count, off_t) {
 
         uint8_t con[1];
         eth_read_mem(SN_IR(socket->index), con, 1);
-        if ((con[0] & INT_RECV) == 0) {
+        if (socket->socket.mode == TCP && (con[0] & INT_RECV) == 0) {
                 struct Process *current_process = scheduler_get_current_process();
                 current_process->pstate = WAITING_FOR_RESOURCE;
                 wiznet_network_interface.socket_waiting_processes[socket->index] = current_process;
