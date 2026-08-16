@@ -11,4 +11,6 @@ void delay_ms(unsigned int ms);
 
 void delay_us(unsigned int us);
 
+void ms_since_boot(uint64_t *time);
+
 #endif //TIME_H

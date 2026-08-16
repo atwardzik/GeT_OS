@@ -28,6 +28,14 @@
 .equ PLL_PRIM, 0x0c
 .equ PLL_PWR, 0x04
 
+.equ POWMAN_TIMER, 0x88
+.equ POWMAN_SET_TIME_63TO48, 0x60
+.equ POWMAN_SET_TIME_47TO32, 0x64
+.equ POWMAN_SET_TIME_31TO16, 0x68
+.equ POWMAN_SET_TIME_15TO0, 0x6c
+.equ POWMAN_READ_TIME_UPPER, 0x70
+.equ POWMAN_READ_TIME_LOWER, 0x74
+
 #ifdef ARCH_RP2040
 .equ CLK_REF_DIV_INT, 8
 #elifdef ARCH_RP2350
@@ -178,10 +186,50 @@ setup_internal_clk:
 
                 movs    r1, #1                                          @ enable bit
                 str     r1, [r0, TIMER0_CTRL]
+
+        .init_aot:
+                ldr     r0, POWMAN_BASE
+                ldr     r1, =0x5afe
+                lsls    r1, r1, #16
+                str     r1, [r0, POWMAN_SET_TIME_63TO48]
+                str     r1, [r0, POWMAN_SET_TIME_47TO32]
+                str     r1, [r0, POWMAN_SET_TIME_31TO16]
+                str     r1, [r0, POWMAN_SET_TIME_15TO0]
+
+                mov     r2, #1
+                lsls    r2, r2, #9                                      @ use_xosc
+                orrs    r2, r2, #6                                      @ timer run | clear
+                orrs    r1, r1, r2                                      @ add password
+                str     r1, [r0, POWMAN_TIMER]
+
 #endif
 
                 pop     {pc}
 
+
+.thumb_func
+.global ms_since_boot
+.align 4
+ms_since_boot:
+#ifdef ARCH_RP2040
+        bkpt    #0
+#elifdef ARCH_RP2350
+        push    {r4}
+        mov     r4, r0
+        .read_time:
+                ldr     r0, POWMAN_BASE
+                ldr     r1, [r0, POWMAN_READ_TIME_UPPER]
+                ldr     r2, [r0, POWMAN_READ_TIME_LOWER]
+                ldr     r3, [r0, POWMAN_READ_TIME_UPPER]
+                cmp     r1, r3
+                bne     .read_time
+
+        str     r2, [r4]
+        str     r1, [r4, #4]
+
+        pop     {r4}
+#endif
+        bx      lr
 
 
 #ifdef ARCH_RP2040
@@ -197,6 +245,7 @@ XOSC_BASE:              .word 0x40048000
 CLOCKS_BASE:            .word 0x40010000
 WATCHDOG_TICK:          .word 0x400d802c
 PLL_SYS_BASE:           .word 0x40050000
+POWMAN_BASE:            .word 0x40100000
 
 #endif
 
