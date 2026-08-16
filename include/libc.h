@@ -304,6 +304,8 @@ time_t time(time_t *tloc);
 
 int stime(const time_t *t);
 
+char *ctime(const time_t *time);
+
 /*
  * Misc
  */

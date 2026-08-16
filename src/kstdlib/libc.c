@@ -802,3 +802,79 @@ time_t time(time_t *tloc) {
 int stime(const time_t *t) {
         SYSCALL_RETURN(int, STIME_SVC);
 }
+
+static bool is_leap(int year) {
+        return year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
+}
+
+char *ctime(const time_t *time) {
+        static char tstr[26] = {};
+
+        memset(tstr, 0, 26);
+        time_t time_left = *time;
+
+        time_t tmp = 0, rem = 0;
+        int year = 1970;
+        while (tmp <= time_left) {
+                if (is_leap(year)) {
+                        tmp += 366 * 24 * 60 * 60;
+                }
+                else {
+                        tmp += 365 * 24 * 60 * 60;
+                }
+                year += 1;
+
+                rem = time_left - tmp;
+                if (rem < 365 * 24 * 60 * 60) {
+                        break;
+                }
+        }
+        time_left = rem;
+
+
+        int month = 1;
+        tmp = 0;
+        for (int i = 0; i < 12; ++i) {
+                constexpr int month_days[12] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+                int days = month_days[i];
+                if (i == 1 && is_leap(year)) {
+                        days += 1;
+                }
+                tmp += days * 24 * 60 * 60;
+
+                if (tmp < time_left) {
+                        month += 1;
+                }
+                else {
+                        tmp -= days * 24 * 60 * 60;
+                        break;
+                }
+        }
+        time_left -= tmp;
+
+
+        int day = 1;
+        tmp = 0;
+        while (tmp <= time_left) {
+                tmp += 24 * 60 * 60;
+                day += 1;
+
+                rem = time_left - tmp;
+                if (rem < 24 * 60 * 60) {
+                        break;
+                }
+        }
+        time_left = rem;
+
+
+        const int hour = time_left / 3600;
+        time_left %= 3600;
+
+        const int minute = time_left / 60;
+        const int second = time_left % 60;
+
+
+        snprintf(tstr, 26, "%i/%i/%i %i:%i:%i", year, month, day, hour, minute, second);
+
+        return tstr;
+}

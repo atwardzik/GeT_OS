@@ -191,16 +191,33 @@ void set_current_time(void) {
                 return;
         }
 
-        uint8_t buffer[56] = {0x23};
-        write(sockfd, buffer, 48);
-        const int received_bytes = read(sockfd, buffer, sizeof(buffer));
+        uint8_t buffer1[56];
+        uint8_t buffer2[56];
+retry:
+        buffer1[0] = 0x23;
+        buffer2[0] = 0x23;
 
-        time_t timestamp = 0;
+        write(sockfd, buffer1, 48);
+        read(sockfd, buffer1, sizeof(buffer1));
+        time_t timestamp1 = 0;
         for (int i = 0; i < 4; ++i) {
-                timestamp = (timestamp << 8) | buffer[48 + i];
+                timestamp1 = (timestamp1 << 8) | buffer1[48 + i];
         }
 
-        unix_time = timestamp - NTP_UNIX_EPOCH_DIFF;
+        delay_ms(1);
+
+        write(sockfd, buffer2, 48);
+        read(sockfd, buffer2, sizeof(buffer2));
+        time_t timestamp2 = 0;
+        for (int i = 0; i < 4; ++i) {
+                timestamp2 = (timestamp2 << 8) | buffer2[48 + i];
+        }
+
+        if (timestamp1 != timestamp2) {
+                goto retry;
+        }
+
+        unix_time = timestamp1 - NTP_UNIX_EPOCH_DIFF;
         stime(&unix_time);
 
         close(sockfd);
@@ -210,6 +227,14 @@ void PATER_ADAMVS(int argc, char *argv[]) {
         signal(SIGINT, PATER_ADAMVS_SIGINT);
         printf(
                 "\n\x1b[96;49m  PATER ADAMVS QUI EST IN PARADISO VOLVPTATIS SALVTAT SEQUENTES PROCESS FILIOS\x1b[0m\n\n");
+
+        printf("\x1b[96;49m[!] Retrieving current time. \x1b[0m");
+        set_current_time();
+        time_t current_time = time(nullptr);
+        printf("Current time is: %s\n", ctime(&current_time));
+
+
+        create_long_file();
 
 
         printf("\x1b[96;49m[!] Running process LED\x1b[0m\n");
@@ -225,11 +250,6 @@ void PATER_ADAMVS(int argc, char *argv[]) {
                 __asm__("bkpt   #0");
         }
 
-        set_current_time();
-        time_t current_time = time(nullptr);
-        printf("Current time is: %i\n", current_time);
-
-        create_long_file();
 
         char *params[] = {"vi", "/mnt/disk0/start.s"};
         // [[maybe_unused]] const int vi_pid = spawnp((void (*)(void)) run_editor, nullptr, nullptr, params, nullptr);
