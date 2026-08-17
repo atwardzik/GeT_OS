@@ -134,9 +134,9 @@ struct File {
 };
 
 struct pollfd {
-        int   fd;         /* file descriptor */
-        short events;     /* requested events */
-        short revents;    /* returned events */
+        int fd;        /* file descriptor */
+        short events;  /* requested events */
+        short revents; /* returned events */
 };
 
 struct FileOperations {
@@ -145,6 +145,8 @@ struct FileOperations {
         ssize_t (*read)(struct File *file, void *buf, size_t count, off_t file_offset);
 
         ssize_t (*write)(struct File *file, void *buf, size_t count, off_t file_offset);
+
+        ssize_t (*readdir)(struct VFS_Inode *inode, struct File *file, void *buf, size_t count);
 
         int (*open)(struct VFS_Inode *, struct File *);
 
@@ -174,7 +176,7 @@ int sys_write(int file, char *ptr, int len);
 
 int sys_ioctl(int file, unsigned long request, void *arg);
 
-int sys_readdir(int dirfd, struct DirectoryEntry *directory_entry);
+int sys_readdir(int dirfd, void *buf, int size);
 
 int sys_chdir(const char *path);
 
@@ -185,6 +187,8 @@ int sys_fstat(int file, struct stat *st);
 char *sys_getcwd(char *buf, unsigned int len);
 
 
-struct Dentry *mount_partition(struct Dentry *parent_dir, uint32_t block_number, const struct HardDriveOperations *hd_op);
+struct Dentry *mount_partition(
+        struct Dentry *parent_dir, uint32_t block_number, const struct HardDriveOperations *hd_op
+);
 
 #endif // OS_FILE_H

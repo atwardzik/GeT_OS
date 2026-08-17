@@ -132,7 +132,7 @@ int ioctl(int file, unsigned long request, void *arg);
 
 int fstat(int file, struct stat *st);
 
-int readdir(int dirfd, struct DirectoryEntry *directory_entry);
+int readdir(int dirfd, void *buf, int size);
 
 int chdir(const char *path);
 

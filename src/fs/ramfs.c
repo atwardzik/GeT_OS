@@ -38,6 +38,7 @@ struct VFS_Inode *ramfs_alloc_inode(struct SuperBlock *sb) {
         struct FileOperations *i_fop = kmalloc(sizeof(*i_fop));
         i_fop->read = ramfs_read;
         i_fop->write = ramfs_write;
+        i_fop->readdir = ramfs_readdir;
 
 
         struct RAMFS_Inode *inode = kmalloc(sizeof(*inode));
@@ -164,6 +165,19 @@ ssize_t ramfs_read(struct File *file, void *buf, size_t count, off_t file_offset
         }
 
         return offset;
+}
+
+ssize_t ramfs_readdir(struct VFS_Inode *inode, struct File *file, void *buf, size_t count) {
+        const struct RAMFS_Inode *inode_ptr = (struct RAMFS_Inode *) file->f_inode;
+
+        const int dentries_to_read = count / sizeof(struct DirectoryEntry);
+        const int dentries_bytes = dentries_to_read * sizeof(struct DirectoryEntry) <= inode->i_size
+                                           ? dentries_to_read * sizeof(struct DirectoryEntry)
+                                           : inode->i_size;
+
+        memcpy(buf, inode_ptr->file_begin + file->f_pos, dentries_bytes);
+
+        return dentries_bytes;
 }
 
 struct File *ramfs_get_file_handler(struct Dentry *file, unsigned int flags) {

@@ -41,8 +41,8 @@ GSH_SRCS := $(SRCDIR)/shell.c
 GSH_OBJS := $(GSH_SRCS:$(SRCDIR)/%.c=$(OBJDIR)/%.o)
 GSH := $(BINDIR)/gsh
 
-LS_SRCS := $(SRCDIR)/ls.s
-LS_OBJS := $(LS_SRCS:$(SRCDIR)/%.s=$(OBJDIR)/%.o)
+LS_SRCS := $(SRCDIR)/ls.c
+LS_OBJS := $(LS_SRCS:$(SRCDIR)/%.c=$(OBJDIR)/%.o)
 LS := $(BINDIR)/ls
 
 MKDIR_SRCS := $(SRCDIR)/mkdir.c
@@ -73,7 +73,7 @@ all: liblibc.so $(CRT0) dirs $(GSH) $(MKDIR) $(TOUCH) $(CAT) $(LS) $(MODBUS) $(S
 
 # Link
 $(LS): $(LS_OBJS) $(CRT0) | dirs
-	$(LINKER) $(LINK_ARGS) $(LS_OBJS) $(CRT0) -o $@
+	$(LINKER) $(LINK_ARGS) $(LS_OBJS) $(CRT0) -llibc -o $@
 
 $(GSH): $(GSH_OBJS) $(CRT0) liblibc.so | dirs
 	$(LINKER) $(LINK_ARGS) $(GSH_OBJS) $(CRT0) -llibc -o $@

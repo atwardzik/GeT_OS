@@ -322,8 +322,8 @@ int sys_lseek(const int file, off_t offset, int whence) {
         return current_file->f_pos;
 }
 
-int sys_readdir(int dirfd, struct DirectoryEntry *directory_entry) {
-        struct Process *current_process = scheduler_get_current_process();
+int sys_readdir(int dirfd, void *buf, int size) {
+        const struct Process *current_process = scheduler_get_current_process();
 
         if (dirfd >= current_process->files.count || dirfd < 0 || current_process->files.fdtable[dirfd] == nullptr) {
                 printk("[!] There is no such file descriptor\n");
@@ -331,44 +331,16 @@ int sys_readdir(int dirfd, struct DirectoryEntry *directory_entry) {
         }
 
         struct File *parent_handler = current_process->files.fdtable[dirfd];
-        const struct VFS_Inode *parent_inode = parent_handler->f_inode;
 
+        if (parent_handler->f_op->readdir) {
+                struct VFS_Inode *parent_inode = parent_handler->f_inode;
+                const int bytes_read = parent_handler->f_op->readdir(parent_inode, parent_handler, buf, size);
 
-        const char *fs_name = parent_inode->i_sb->name;
-        if (strcmp(fs_name, "ramfs") == 0) {
-                const size_t bytes_left = parent_inode->i_size - parent_handler->f_pos;
-                if (bytes_left < sizeof(struct DirectoryEntry)) {
-                        return 0;
-                }
-
-                char buf[sizeof(struct DirectoryEntry)];
-                sys_read(dirfd, buf, sizeof(struct DirectoryEntry));
-                *directory_entry = *(struct DirectoryEntry *) buf;
-        }
-        else if (strcmp(fs_name, "fat16") == 0) {
-                char buf[32];
-        next_dir:
-                if (sys_read(dirfd, buf, 32) <= 0) {
-                        return 0;
-                }
-
-                const auto entry = (struct FAT16_DirectoryEntry *) buf;
-
-                if (entry->filename[0] == 0) {
-                        return 0;
-                }
-                if (entry->filename[0] == 0xe5 ||                //deleted
-                    entry->attributes & 0x0f ||                  //LFN
-                    entry->attributes & FAT16_ATTRIB_HIDDEN ||   //hidden file
-                    entry->attributes & FAT16_ATTRIB_VOLUME_NAME //disk name
-                ) {
-                        goto next_dir;
-                }
-
-                FAT16_decode_entry_name(entry, directory_entry->name);
+                parent_handler->f_pos += bytes_read;
+                return bytes_read;
         }
 
-        return 1;
+        return 0;
 }
 
 int sys_chdir(const char *path) {

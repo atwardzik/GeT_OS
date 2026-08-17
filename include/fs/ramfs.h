@@ -32,6 +32,8 @@ ssize_t ramfs_write(struct File *file, void *buf, size_t count, off_t file_offse
 
 ssize_t ramfs_read(struct File *file, void *buf, size_t count, off_t file_offset);
 
+ssize_t ramfs_readdir(struct VFS_Inode *inode, struct File *file, void *buf, size_t count);
+
 struct File *ramfs_get_file_handler(struct Dentry *file, unsigned int flags);
 
 

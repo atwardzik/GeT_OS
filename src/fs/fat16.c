@@ -407,6 +407,44 @@ static struct Dentry *FAT16_lookup(struct VFS_Inode *parent, struct Dentry *file
         return nullptr;
 }
 
+static ssize_t FAT16_readdir(struct VFS_Inode *inode, struct File *file, void *buf, const size_t count) {
+        const struct FAT16_DirectoryEntries dentries = FAT16_get_all_dentries((struct FAT16_Inode *) inode);
+
+        struct DirectoryEntry *vfs_dentries = buf;
+        const size_t vfs_dentries_size = count / sizeof(struct DirectoryEntry);
+        size_t total_written_bytes = 0;
+
+        int entry_index = 0;
+        for (int i = 0; i < vfs_dentries_size; ++i) {
+                if (i >= dentries.count) {
+                        break;
+                }
+
+                memset(&vfs_dentries[i], 0, sizeof(struct DirectoryEntry));
+
+                const struct FAT16_DirectoryEntry *entry = &dentries.dentries[entry_index];
+
+                while (entry->filename[0] == 0xe5 ||                //deleted
+                       entry->attributes & 0x0f ||                  //LFN
+                       entry->attributes & FAT16_ATTRIB_HIDDEN ||   //hidden file
+                       entry->attributes & FAT16_ATTRIB_VOLUME_NAME //disk name
+                ) {
+                        entry_index += 1;
+                        entry = &dentries.dentries[entry_index];
+                }
+
+                if (entry->filename[0] == 0) {
+                        break;
+                }
+                FAT16_decode_entry_name(entry, vfs_dentries[i].name);
+
+                entry_index += 1;
+                total_written_bytes += sizeof(struct DirectoryEntry);
+        }
+
+        kfree(dentries.dentries);
+        return total_written_bytes;
+}
 
 static int FAT16_mark_cluster(struct FAT16_SuperBlock *sb, const uint16_t cluster, const uint16_t value) {
         const auto sb_op = (struct FAT16_SuperBlockOperations *) sb->sb.s_op;
@@ -653,6 +691,7 @@ struct Dentry *FAT16_mount(
         i_fop = kmalloc(sizeof(*i_fop));
         i_fop->read = FAT16_read;
         i_fop->write = FAT16_write;
+        i_fop->readdir = FAT16_readdir;
 
         //filesystem structure
         struct FAT16_SuperBlockOperations *sb_op = kmalloc(sizeof(*sb_op));

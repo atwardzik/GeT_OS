@@ -89,7 +89,7 @@ int lseek(int file, int ptr, int dir) {
         SYSCALL_RETURN(int, LSEEK_SVC)
 }
 
-int readdir(int dirfd, struct DirectoryEntry *directory_entry) {
+int readdir(int dirfd, void *buf, int size) {
         SYSCALL_RETURN(int, READDIR_SVC)
 }
 

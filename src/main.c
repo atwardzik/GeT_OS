@@ -183,6 +183,7 @@ void set_current_time(void) {
 
         struct sockaddr_in dest = {AF_INET, htons(123)};
         inet_aton("192.168.1.50", &dest.sin_addr);
+        // inet_aton("216.239.35.0", &dest.sin_addr); // time.google.com
 
         if (connect(sockfd, (struct sockaddr *) &dest, sizeof(dest)) < 0) {
                 dprintf(2, "Error while trying to connect - connection timed out\n");
@@ -213,7 +214,7 @@ retry:
                 timestamp2 = (timestamp2 << 8) | buffer2[48 + i];
         }
 
-        if (timestamp1 != timestamp2) {
+        if (timestamp2 - timestamp1 > 1) { //TODO: add timeout
                 goto retry;
         }
 
@@ -222,6 +223,7 @@ retry:
 
         close(sockfd);
 }
+
 
 void PATER_ADAMVS(int argc, char *argv[]) {
         signal(SIGINT, PATER_ADAMVS_SIGINT);
@@ -250,8 +252,7 @@ void PATER_ADAMVS(int argc, char *argv[]) {
                 __asm__("bkpt   #0");
         }
 
-
-        char *params[] = {"vi", "/mnt/disk0/start.s"};
+        // char *params[] = {"vi", "/mnt/disk0/start.s"};
         // [[maybe_unused]] const int vi_pid = spawnp((void (*)(void)) run_editor, nullptr, nullptr, params, nullptr);
 
         // int i = 0;

@@ -70,7 +70,7 @@ typedef int ssize_t; // Used for a count of bytes or an error indication.
 
 // typedef suseconds_t; // Used for time in microseconds.
 
-typedef uint32_t time_t; // Used for time in seconds.
+typedef int32_t time_t; // Used for time in seconds.
 
 // typedef timer_t; // Used for timer ID returned by timer_create().
 
