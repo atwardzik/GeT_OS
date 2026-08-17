@@ -2,6 +2,24 @@
 // Created by Artur Twardzik on 21/08/2025.
 //
 
+/*
+ * For the development it is reasonable that UART and VGA+PS2 are connected to
+ * the same "driver" which in the standard unix terminology would be called
+ * "console". It is however of some importance that at some point in time those
+ * drivers should be separated. Then each ttyX will be connected to exactly one
+ * input and output driver.
+ *
+ * The function **write_to_keyboard_buffer** should take the ttyX pointer so
+ * that it knows to each terminal it should pass the occurring key press event.
+ *
+ * There is exactly one PS2 device, so the driver can hold it's ttyX as a
+ * single global variable. The function can be called with this ttyX pointer.
+ *
+ * There could be multiple UART instances, so there must be some kind of
+ * instances registry. When each instance fires an irq the driver has to detect
+ * which instance fired, find appropriate ttyX instance and call the function.
+ */
+
 #include "tty.h"
 
 #include "drivers/keyboard.h"
