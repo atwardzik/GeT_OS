@@ -157,15 +157,8 @@ static int sd_card_write(uint32_t block_number, size_t block_size, char *buffer)
 //FIXME: deassert CS on failure
 struct HardDriveOperations *init_sd_card(void) {
         printk_status_init("Initializing SD card");
+        spi_set_baudrate(SD_SPI_BLOCK, 2, 3);
 
-        GPIO_function_select(15, 1);
-        GPIO_function_select(14, 1);
-        init_pin_output(SD_CS); //manual CS
-        GPIO_function_select(12, 1);
-        output_enable_pin(15);
-        output_enable_pin(14);
-        output_enable_pin(12);
-        spi_init(SD_SPI_BLOCK, 2, 3, 0); // 125[MHz] / 2*(1+3) = 15.625 [MHz]
         printk_status_step();
 
         // Power up
@@ -271,13 +264,13 @@ struct HardDriveOperations *init_sd_card(void) {
 
         set_pin(SD_CS);
 
-
         struct HardDriveOperations *hd_op = kmalloc(sizeof(*hd_op));
         hd_op->read_block = sd_card_read;
         hd_op->write_block = sd_card_write;
         hd_op->deinit = nullptr;
 
         sd_active = true;
+        spi_set_baudrate(SD_SPI_BLOCK, 2, 3); // 150[MHz] / 2(1+3) = 18.75[MHz]
         printk_status_finish(0);
 
         return hd_op;

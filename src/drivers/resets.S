@@ -42,34 +42,29 @@
 .align 4
 reset_subsys:
         push    {lr}
-        @ 1) Reset GPIO
-        movs    r0, BIT_IO_BANK0
+
+        movs    r0, BIT_DMA
         bl      hw_reset
 
-        @ 2) Reset PADS
-        movs    r0, BIT_PADS_BANK0
-        bl      hw_reset
-
-        @ 3) Reset UART0
-        movs    r0, BIT_IO_UART0
-        bl      hw_reset
-
-        @ 4) Reset PIO
         movs    r0, BIT_PIO0
         bl      hw_reset
 
         movs    r0, BIT_PIO1
         bl      hw_reset
 
-        @ 5) Reset DMA
-        movs    r0, BIT_DMA
+        movs    r0, BIT_IO_UART0
         bl      hw_reset
 
-        @ 6) Reset SPI
         movs    r0, BIT_SPI0
         bl      hw_reset
 
         movs    r0, BIT_SPI1
+        bl      hw_reset
+
+        movs    r0, BIT_IO_BANK0
+        bl      hw_reset
+
+        movs    r0, BIT_PADS_BANK0
         bl      hw_reset
 
         pop     {pc}

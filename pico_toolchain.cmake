@@ -3,6 +3,7 @@ set(CMAKE_SYSTEM_PROCESSOR arm)
 
 set(CMAKE_C_COMPILER arm-none-eabi-gcc CACHE INTERNAL "")
 set(CMAKE_ASM_COMPILER arm-none-eabi-gcc CACHE INTERNAL "")
+set(CMAKE_OBJCOPY arm-none-eabi-objcopy CACHE INTERNAL "")
 
 set(CMAKE_C_FLAGS "-Wno-unused-variable -Wno-error=unused-parameter -std=c23 -mcpu=cortex-m33 -mfpu=fpv5-sp-d16 -ffreestanding -mthumb -g -O0" CACHE INTERNAL "")
 set(CMAKE_ASM_FLAGS "-Wa,-warn,-fatal-warnings -mcpu=cortex-m33 -mthumb -g" CACHE INTERNAL "")

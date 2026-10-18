@@ -30,36 +30,38 @@
 .align 4
 uart_init:
         push    {lr}
-        @ 1) Set baudrate; values calculated according to datasheet for 115200
+        // 1) Set baudrate; values calculated according to datasheet for 115200
         ldr     r1, UART0_BASE
 
-        movs    r0, #6
+        // clk_peri / (16 * desired_baud) = IBRD.m
+        // FBRD = int((m*64) + 0.5)
+        movs    r0, #81
         str     r0, [r1, UART_IBRD]
 
-        movs    r0, #33
+        movs    r0, #24
         str     r0, [r1, UART_FBRD]
 
-        @ 2) Set word length
-        movs    r0, #0b01110000        @ Bit 6-7 - word length = 8 bit; Bit 5 - fifo enable
+        // 2) Set word length
+        movs    r0, #0b01110000        // Bit 6-7 - word length = 8 bit; Bit 5 - fifo enable
         str     r0, [r1, UART_LCR_H]
 
-        @ 3) enable uart
-        movs    r0, #3                 @ Bit 9 - rx_enable; Bit 8 - tx_enable
+        // 3) enable uart
+        movs    r0, #3                 // Bit 9 - rx_enable; Bit 8 - tx_enable
         lsls    r0, #8
-        adds    r0, #1                 @ Bit 1 - uart_enable
+        adds    r0, #1                 // Bit 1 - uart_enable
         str     r0, [r1, UART_CR]
 
-        @ 4) select pins
-        movs    r0, #0                 @ UART0_TX
-        movs    r1, #2                 @ 2 - UART
+        // 4) select pins
+        movs    r0, #0                 // UART0_TX
+        movs    r1, #2                 // 2 - UART
         bl      GPIO_function_select
 
-        movs    r0, #1                 @ UART0_RX
-        movs    r1, #2                 @ 2 - UART
+        movs    r0, #1                 // UART0_RX
+        movs    r1, #2                 // 2 - UART
         bl      GPIO_function_select
 
-        @ 5) set uart receive interrupt
-        @ clear pending and set ena
+        // 5) set uart receive interrupt
+        // clear pending and set ena
 
 
         movs    r0, #33
@@ -67,14 +69,14 @@ uart_init:
         bl      set_isr
 
         ldr     r0, UART0_BASE
-        movs    r1, #0x50               @ bit 4 - RXIM, bit 6 - RTIM
+        movs    r1, #0x50               // bit 4 - RXIM, bit 6 - RTIM
         str     r1, [r0, UART_IMSC]
 
         ldr     r0, UART0_BASE
         adds    r0, r0, UART_IFLS
-        movs    r1, #2                  @ bit 3:5 - interrupt fifo level, 0 to smallest
+        movs    r1, #2                  // bit 3:5 - interrupt fifo level, 0 to smallest
         str     r1, [r0]
-        @bl      atomic_clr
+        //bl      atomic_clr
 
 
         pop     {pc}
@@ -88,7 +90,7 @@ uart_init:
 uart_Tx:
         ldr  r3, UART0_BASE
 
-        movs r2, #32                @ Bit 5 - TXFF (transmit fifo full)
+        movs r2, #32                // Bit 5 - TXFF (transmit fifo full)
         .tx_fifo_empty_loop:
                 ldr  r1, [r3, UART_FR]
                 tst  r1, r2
@@ -181,14 +183,14 @@ uart_puts:
 .align 4
 uart_Rx:
         push    {lr}
-        movs    r0, #1                          @ uart is 33 irq - 1 for first bank on rp2350
+        movs    r0, #1                          // uart is 33 irq - 1 for first bank on rp2350
         ldr     r1, PPB_BASE
-        ldr     r2, NVIC_ICER1_OFFSET           @ unset IRQ
+        ldr     r2, NVIC_ICER1_OFFSET           // unset IRQ
         ldr     r0, [r1, r2]
 
         ldr     r3, UART0_BASE
 
-        movs    r2, #16                         @ Bit 4 - RXFE (receive fifo empty)
+        movs    r2, #16                         // Bit 4 - RXFE (receive fifo empty)
         .rx_fifo_empty_loop:
                 ldr     r1, [r3, UART_FR]
                 tst     r1, r2
@@ -196,20 +198,20 @@ uart_Rx:
 
         ldrb    r0, [r3, UART_DR]
 
-        cmp     r0, #0x0d                       @ \r
+        cmp     r0, #0x0d                       // \r
         it      eq
-        movseq  r0, #0x0a                       @ replace with newline
+        movseq  r0, #0x0a                       // replace with newline
 
-        cmp     r0, #0x7f                       @ DEL
+        cmp     r0, #0x7f                       // DEL
         it      eq
-        movseq  r0, #0x08                       @ replace with \b
+        movseq  r0, #0x08                       // replace with \b
 
         bl      write_to_keyboard_buffer
 
-        movs    r0, #1                          @ uart is 33 irq - 1 for first bank on rp2350
+        movs    r0, #1                          // uart is 33 irq - 1 for first bank on rp2350
         ldr     r1, PPB_BASE
-        ldr     r2, NVIC_ICPR1_OFFSET           @ unset IRQ
-        ldr     r3, NVIC_ISER1_OFFSET           @ set IRQ
+        ldr     r2, NVIC_ICPR1_OFFSET           // unset IRQ
+        ldr     r3, NVIC_ISER1_OFFSET           // set IRQ
         str     r0, [r1, r2]
         str     r0, [r1, r3]
 
@@ -273,6 +275,6 @@ UART0_BASE:     .word 0x40070000
 #endif
 
 PPB_BASE:               .word 0xe0000000
-NVIC_ICPR1_OFFSET:      .word 0xe284                    @ interrupt clear-pending register
-NVIC_ISER1_OFFSET:      .word 0xe104                    @ interrupt set-enable register
-NVIC_ICER1_OFFSET:      .word 0xe184                    @ interrupt clr-enable register
+NVIC_ICPR1_OFFSET:      .word 0xe284                    // interrupt clear-pending register
+NVIC_ISER1_OFFSET:      .word 0xe104                    // interrupt set-enable register
+NVIC_ICER1_OFFSET:      .word 0xe184                    // interrupt clr-enable register

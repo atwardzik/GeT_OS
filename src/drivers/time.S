@@ -118,7 +118,7 @@ setup_internal_clk:
                 movs    r1, #125                                        @ 125 [MHz]
                 str     r1, [r0, PLL_FBDIV_INT]
 
-                movs    r1, #0x62                                       @ POSTDIV1=5, POSTDIV2=2
+                movs    r1, #0x52                                       @ POSTDIV1=5, POSTDIV2=2
                 lsls    r1, #12
                 str     r1, [r0, PLL_PRIM]
 
@@ -161,8 +161,9 @@ setup_internal_clk:
                 movs    r1, #1
                 lsls    r1, r1, #11                                     @ ENABLE - Starts and stops the clock generator cleanly
 
-                movs    r2, #4
-                lsls    r2, r2, #5                                      @ Bits 7:5 - 0x4 -> xosc_clksrc = 12[MHz]
+                @movs    r2, #4
+                @lsls    r2, r2, #5                                      @ Bits 7:5 - 0x4 -> xosc_clksrc = 12[MHz]
+                movs    r2, #0
 
                 orrs    r1, r1, r2
                 str     r1, [r0, CLK_PERI_CTRL]

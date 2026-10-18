@@ -16,6 +16,10 @@ else ()
     message(FATAL_ERROR "Target architecture should be defined, add -DARCH_RP2040 or -DARCH_RP2350")
 endif ()
 
+if (DEFINED STANDALONE)
+    add_compile_definitions(STANDALONE=1)
+endif ()
+
 project(os LANGUAGES C ASM)
 
 include_directories(${CMAKE_SOURCE_DIR} include tests)
@@ -30,13 +34,13 @@ add_subdirectory(src/userspaceVi) # TEMPORARILY FOR DEVELOPMENT
 add_executable(os
         src/start.S
         src/config.c
+        src/archive_loader.c
         src/main.c
         $<TARGET_OBJECTS:drivers>
         $<TARGET_OBJECTS:kernel>
         $<TARGET_OBJECTS:fs>
         $<TARGET_OBJECTS:vi>
         $<TARGET_OBJECTS:klibc>
-        src/archive_loader.S # PUT THIS ARCHIVE LOADER ALWAYS AT THE END (raw files copied)!!!
 )
 
 target_link_options(os PRIVATE
@@ -49,3 +53,13 @@ set_target_properties(os PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin"
         OUTPUT_NAME "kernel_debug.elf"
 )
+
+if (NOT DEFINED STANDALONE)
+    add_custom_command(
+            TARGET os
+            POST_BUILD
+            COMMAND ${CMAKE_OBJCOPY} -O binary
+            "$<TARGET_FILE:os>"
+            "${CMAKE_SOURCE_DIR}/bin/kernel.img"
+    )
+endif ()

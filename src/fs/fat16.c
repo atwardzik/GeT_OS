@@ -5,6 +5,7 @@
 #include "fat16.h"
 
 #include "errno.h"
+#include "libc.h"
 #include "kernel/error.h"
 #include "kernel/memory.h"
 #include "kernel/proc.h"
