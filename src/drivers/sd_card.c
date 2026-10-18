@@ -157,7 +157,7 @@ static int sd_card_write(uint32_t block_number, size_t block_size, char *buffer)
 //FIXME: deassert CS on failure
 struct HardDriveOperations *init_sd_card(void) {
         printk_status_init("Initializing SD card");
-        spi_set_baudrate(SD_SPI_BLOCK, 2, 3);
+        spi_set_baudrate(SD_SPI_BLOCK, 2, 191); // 150[MHz] / 2*(1+3) = 390.625 [kHz]
 
         printk_status_step();
 
@@ -165,7 +165,6 @@ struct HardDriveOperations *init_sd_card(void) {
         set_pin(SD_CS);
         for (int i = 0; i < 10; ++i) {
                 spi_tx(1, 0xff);
-                delay_us(10); //pretend to be much slower
         }
         printk_status_step();
 

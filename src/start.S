@@ -66,12 +66,24 @@ decl_isr_bkpt isr_invalid
 .global reset
 .align 4
 reset:
+        ldr     r0, RESETS_BASE
+        ldr     r1, =0x2000             // atomic bitmask set
+        ldr     r2, =0xc3a44            // reset peripherals: SPI, PIO, PADS_BANK0, IO_BANK0
+        str     r2, [r0, r1]
+
+        1:
+                ldr     r3, [r0]
+                tst     r3, r2
+                beq     1b
+
+vector_setup:
         ldr     r2, PPB_BASE
         ldr     r1, VTOR_OFFSET
         add     r1, r1, r2
         ldr     r0, =vector_table
         str     r0, [r1]
 
+stack_setup:
         ldr     r1, =__stack_end__
         mov     sp, r1
 
@@ -97,3 +109,13 @@ platform_entry:
 .align 4
 PPB_BASE:               .word 0xe0000000
 VTOR_OFFSET:            .word 0xed08
+
+#ifdef ARCH_RP2040
+.align 4
+RESETS_BASE:            .word 0x4000c000
+
+#elifdef ARCH_RP2350
+.align 4
+RESETS_BASE:            .word 0x40020000
+
+#endif
