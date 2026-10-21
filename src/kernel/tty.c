@@ -165,7 +165,7 @@ static void handle_newline_character(void) {
                 keyboard_buffer_current_position += 1;
                 tty_echo(0x1b);
                 tty_echo('[');
-                tty_echo('@');
+                tty_echo('C');
         }
         tty_echo(ENDL);
 
@@ -196,19 +196,15 @@ static void handle_ansi_escape_sequence(int c) {
         if (c == ARROW_LEFT) {
                 if (keyboard_buffer_current_position) {
                         keyboard_buffer_current_position -= 1;
-                        tty_echo(c);
                 }
         }
         else if (c == ARROW_RIGHT) {
                 if (keyboard_buffer_current_position < keyboard_buffer_final_length) {
                         keyboard_buffer_current_position += 1;
-                        tty_echo(c);
                 }
         }
         else if (c == ARROW_UP || c == ARROW_DOWN) {
-                if (!tty_canonical_mode) { //should we really print this? It must be rather the decision of the prgrm
-                        tty_echo(c);
-                }
+                //should we really print this? It must be rather the decision of the prgrm
         }
 
         if (!tty_canonical_mode) {
@@ -238,6 +234,8 @@ void write_to_keyboard_buffer(int c) {
                 //FIXME: delivered escape sequences should be only for special keys on kbrd; sequences can be 3 or 4 bytes
                 escape_sequence[escape_sequence_position] = (char) c;
 
+                write_byte(c);
+
                 if (escape_sequence_position == 2) {
                         c = (escape_sequence[0] << 16) | (escape_sequence[1] << 8) | escape_sequence[2];
 
@@ -245,17 +243,18 @@ void write_to_keyboard_buffer(int c) {
                 }
                 else {
                         escape_sequence_position += 1;
-                        return;
                 }
+
+                if (c == ARROW_LEFT || c == ARROW_RIGHT || c == ARROW_UP || c == ARROW_DOWN) {
+                        handle_ansi_escape_sequence(c);
+                        goto wake_up_if_applicable;
+                }
+
+                return;
         }
 
         if (c >= 0 && c < 32) {
                 handle_ascii_control_character(c);
-                goto wake_up_if_applicable;
-        }
-
-        if (c == ARROW_LEFT || c == ARROW_RIGHT || c == ARROW_UP || c == ARROW_DOWN) {
-                handle_ansi_escape_sequence(c);
                 goto wake_up_if_applicable;
         }
 
