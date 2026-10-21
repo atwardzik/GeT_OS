@@ -15,6 +15,7 @@ SECTIONS
                 __text_start = .;
                 *(.reset*)
                 *(.text*)
+                *(.rodata*)
                 __text_end = .;
         } > code
 

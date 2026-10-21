@@ -21,7 +21,7 @@
  * +--------------+-----------------------------+---------------------+
  */
 
-@ Please note that the pins are consecutive, e.g. when starting at pin 2, pins {2,3,4,5} will be treaded as input
+// Please note that the pins are consecutive, e.g. when starting at pin 2, pins {2,3,4,5} will be treaded as input
 .equ UPPER_NIBBLE_START, 2
 .equ LOWER_NIBBLE_START, 6
 .equ NIBBLE_MASK, 0x0F
@@ -55,10 +55,10 @@ init_keyboard:
         ldr     r1, =interrupt_pin
         str     r0, [r1]
 
-        @ determine bit for edge high -> (pin % 8) * 4 + 3
+        // determine bit for edge high -> (pin % 8) * 4 + 3
         ldr     r0, =edge_high_bit
         movs    r2, #0x07
-        ands    r1, r4, r2                         @ equivalent to (pin % 8)
+        ands    r1, r4, r2                         // equivalent to (pin % 8)
 
         movs    r2, #0x04
         muls    r1, r1, r2
@@ -71,34 +71,34 @@ init_keyboard:
         str     r2, [r0]
 
         .init_pin_interrupt:
-                @ 1) GPIO INIT
+                // 1) GPIO INIT
                 mov     r0, r4
-                movs    r1, #5                         @ 5 - SIO
+                movs    r1, #5                         // 5 - SIO
                 bl      GPIO_function_select
 
-                @ 2) CONFIGURATION
+                // 2) CONFIGURATION
                 mov     r0, r4
-                movs    r1, #1                         @ PULL UP
+                movs    r1, #1                         // PULL UP
                 bl      init_pin_input_with_pull
 
-                @ 3) GPIO_SET_IRQ_ENABLED
-                @ 3.1) acknowledge_irq - "clear stale events which might cause immediate spurious handler entry"
+                // 3) GPIO_SET_IRQ_ENABLED
+                // 3.1) acknowledge_irq - "clear stale events which might cause immediate spurious handler entry"
                 ldr     r1, IO_BANK0_BASE
 
                 mov     r0, r4
-                lsrs    r0, r0, #3                     @ pin / 8 = INTR_n
+                lsrs    r0, r0, #3                     // pin / 8 = INTR_n
                 movs    r2, #0x04
                 muls    r0, r0, r2
                 ldr     r3, INTR_OFFSET
                 add     r0, r0, r3
                 add     r0, r0, r1
 
-                str     r5, [r0]                       @ clear by setting INTR
+                str     r5, [r0]                       // clear by setting INTR
 
-                @ 3.2) set irq enabled
+                // 3.2) set irq enabled
                 ldr     r0, IO_BANK0_BASE
 
-                lsrs    r1, r4, #3                     @ pin / 8 = INTE_n
+                lsrs    r1, r4, #3                     // pin / 8 = INTE_n
                 movs    r2, #0x04
                 muls    r1, r1, r2
 
@@ -106,9 +106,9 @@ init_keyboard:
                 add     r1, r1, r2
                 add     r0, r0, r1
 
-                str     r5, [r0]                       @ set irq enabled - INTE
+                str     r5, [r0]                       // set irq enabled - INTE
 
-                @ 4) set interrupt subroutine
+                // 4) set interrupt subroutine
                 movs    r0, IO_IRQ_BANK0
                 ldr     r1, =keyboard_interrupt_handler
                 bl      set_isr
@@ -116,19 +116,19 @@ init_keyboard:
         .init_keyboard_input_pins:
                 .init_upper_word:
                 movs    r0, UPPER_NIBBLE_START
-                movs    r1, #4                         @ counter
-                movs    r2, #1                         @ PULL UP
+                movs    r1, #4                         // counter
+                movs    r2, #1                         // PULL UP
                 bl      init_multiple_pin_inputs
 
                 .init_lower_word:
                 movs    r0, LOWER_NIBBLE_START
-                movs    r1, #4                         @ counter
-                movs    r2, #1                         @ PULL UP
+                movs    r1, #4                         // counter
+                movs    r2, #1                         // PULL UP
                 bl      init_multiple_pin_inputs
 
         pop     {r4, r5, pc}
 
-#else @ KEYBOARD_SERIAL_INTERFACE
+#else // KEYBOARD_SERIAL_INTERFACE
 
 /**
  * Initialize interrupts and data input for keyboard with PS-2 connector.
@@ -143,80 +143,78 @@ init_keyboard:
         mov     r4, r0
         mov     r5, r1
 
-        @ 0) Disable State Machine!!!
-        movs    r0, #1                  @ PIO BLOCK 1
-        movs    r1, #0                  @ State Machine 0
-        movs    r2, #0                  @ disable
+        // 0) Disable State Machine!!!
+        movs    r0, #1                  // PIO BLOCK 1
+        movs    r1, #0                  // State Machine 0
+        movs    r2, #0                  // disable
         bl      set_sm_enabled
 
-        @ 1) Load program
+        // 1) Load program
         ldr     r0, =ps2_serial_rcv
-        movs    r1, #11                 @ Total of 11 words
-        movs    r2, #1                  @ PIO1
+        movs    r1, #11                 // Total of 11 words
+        movs    r2, #1                  // PIO1
         bl      load_pio_prog
 
-        @ 2) Set state machine exec ctrl with wrap (SM0_EXECCTRL);
-        @ (CLK pin << 24) | (WRAP_TARGET << 7) | (WRAP << 12)
-        movs    r0, #1                  @ PIO BLOCK 1
-        movs    r1, #0                  @ State Machine 0
-        ldr     r2, =0xa000             @ bottom wrap at 0, top wrap at 10
-        lsls    r3, r5, #24             @ set JMPPIN
-        orrs    r2, r2, r3              @ execctrl = jmppin | wrap
+        // 2) Set state machine exec ctrl with wrap (SM0_EXECCTRL);
+        // (CLK pin << 24) | (WRAP_TARGET << 7) | (WRAP << 12)
+        movs    r0, #1                  // PIO BLOCK 1
+        movs    r1, #0                  // State Machine 0
+        ldr     r2, =0xa000             // bottom wrap at 0, top wrap at 10
+        lsls    r3, r5, #24             // set JMPPIN
+        orrs    r2, r2, r3              // execctrl = jmppin | wrap
         bl      setup_pio_execctrl
 
-        @ 3) Set state machine pin ctrl
+        // 3) Set state machine pin ctrl
         mov     r2, r4
-        lsls    r2, #15                 @ IN_BASE_BITS
+        lsls    r2, #15                 // IN_BASE_BITS
 
-        movs    r0, #1                  @ PIO BLOCK 1
-        movs    r1, #0                  @ State Machine 0
+        movs    r0, #1                  // PIO BLOCK 1
+        movs    r1, #0                  // State Machine 0
         bl      setup_pio_pinctrl
 
-        @ 4) setup autopush
+        // 4) setup autopush
         movs    r0, #1
         movs    r1, #0
-        ldr     r2, =0x80850000         @ IN_SHIFTDIR (18 bit), AUTOPUSH (16 bit), PUSH_THRESH (24:20 bits)
+        ldr     r2, =0x80850000         // IN_SHIFTDIR (18 bit), AUTOPUSH (16 bit), PUSH_THRESH (24:20 bits)
         bl      setup_pio_shiftctrl
 
-        @ 5) setup interrupt
-        movs    r0, #17                 @ IRQ17 = PIO1_IRQ_0
+        // 5) setup interrupt
+        movs    r0, #17                 // IRQ17 = PIO1_IRQ_0
         ldr     r1, =keyboard_interrupt_handler
         bl      set_isr
 
-        movs    r0, #1                  @ PIO BLOCK 1
-        movs    r1, #0                  @ SM0_RXNEMPTY
+        movs    r0, #1                  // PIO BLOCK 1
+        movs    r1, #0                  // SM0_RXNEMPTY
         bl      setup_pio_inte
 
-        @ 6) Setup pins
-        @ According to the SDK:
-        @       Note that, if your PIO program only needs the *input* from a given GPIO,
-        @       it's not necessary to select the PIO GPIO function, because PIO input
-        @       paths ignore the GPIO muxing. However, you must still configure the GPIO
-        @       pad itself for input.
-        mov     r0, r4                  @ data pin
-        movs    r1, #1                  @ pull up
+        // 6) Setup pins
+        // According to the SDK:
+        //       Note that, if your PIO program only needs the *input* from a given GPIO,
+        //       it's not necessary to select the PIO GPIO function, because PIO input
+        //       paths ignore the GPIO muxing. However, you must still configure the GPIO
+        //       pad itself for input.
+        mov     r0, r4                  // data pin
+        movs    r1, #1                  // pull up
         bl      init_pin_input_with_pull
 
-        mov     r0, r5                  @ clk pin
-        movs    r1, #1                  @ pull up
+        mov     r0, r5                  // clk pin
+        movs    r1, #1                  // pull up
         bl      init_pin_input_with_pull
 
-        @ 7) set clock divisor
+        // 7) set clock divisor
         movs    r0, #1
         movs    r1, #0
-        movs    r2, #125                @ 125 MHz / 125 = 1 MHz. Tbh this is an arbitrary value
-                                        @ when the clock was running too fast, the PIO program
-                                        @ sometimes went out of sync...
+        movs    r2, #5                // 150 MHz / 5 = 30 MHz. This is an arbitrary value.
         lsls    r2, #16
         bl      setup_pio_clkdiv
 
-        @ 8) PIO State Machine init - load and jump to first instruction
+        // 8) PIO State Machine init - load and jump to first instruction
         movs    r0, #1
         movs    r1, #0
-        movs    r2, #0                  @ address begin
+        movs    r2, #0                  // address begin
         bl      clear_internal_and_jump
 
-        @ 9) Set state machine running
+        // 9) Set state machine running
         movs    r0, #1
         movs    r1, #0
         movs    r2, #1
@@ -226,19 +224,19 @@ init_keyboard:
 
 .align 4
 ps2_serial_rcv:
-                        @       .wrap_target
-        .word 0x2060    @ 0:            wait    0 jmppin, 0
-        .word 0x20e0    @ 1:            wait    1 jmppin, 0
-        .word 0xe027    @ 2:            set     x, 7
-        .word 0x2060    @ 3:sample_data:wait    0 jmppin, 0
-        .word 0x4001    @ 4:            in      pins, 1
-        .word 0x20e0    @ 5:            wait    1 jmppin, 0
-        .word 0x0043    @ 6:            jmp     x--, sample_data
-        .word 0x2060    @ 7:            wait    0 jmppin, 0
-        .word 0x20e0    @ 8:            wait    1 jmppin, 0
-        .word 0x2060    @ 9:            wait    0 jmppin, 0
-        .word 0x20e0    @ 10:           wait    1 jmppin, 0
-                        @       .wrap
+                        //       .wrap_target
+        .word 0x2060    // 0:            wait    0 jmppin, 0
+        .word 0x20e0    // 1:            wait    1 jmppin, 0
+        .word 0xe027    // 2:            set     x, 7
+        .word 0x2060    // 3:sample_data:wait    0 jmppin, 0
+        .word 0x4001    // 4:            in      pins, 1
+        .word 0x20e0    // 5:            wait    1 jmppin, 0
+        .word 0x0043    // 6:            jmp     x--, sample_data
+        .word 0x2060    // 7:            wait    0 jmppin, 0
+        .word 0x20e0    // 8:            wait    1 jmppin, 0
+        .word 0x2060    // 9:            wait    0 jmppin, 0
+        .word 0x20e0    // 10:           wait    1 jmppin, 0
+                        //       .wrap
 
 #endif
 
@@ -248,27 +246,29 @@ ps2_serial_rcv:
 .align 4
 keyboard_interrupt_handler:
         cpsid   i
-        push    {lr}
+        sub     sp, sp, #16
+        stmia   sp, {r7, lr}
+        mov     r7, sp
 
 #ifdef KEYBOARD_PARALLEL_INTERFACE
-        @ 1) determine INTR_n
+        // 1) determine INTR_n
         ldr     r1, IO_BANK0_BASE
         ldr     r0, =interrupt_pin
         ldr     r0, [r0]
-        lsrs    r0, r0, #3                              @ pin / 8 = INTR_n
+        lsrs    r0, r0, #3                              // pin / 8 = INTR_n
         movs    r2, #0x04
         muls    r0, r0, r2
         ldr     r2, INTR_OFFSET
         add     r0, r0, r2
         add     r0, r0, r1
 
-        @ 2) reset interrupt
+        // 2) reset interrupt
         ldr     r1, =edge_high_bit
         ldr     r1, [r1]
-        str     r1, [r0]                                @ clear by setting INTR
+        str     r1, [r0]                                // clear by setting INTR
 #endif
 
-        @ 3) Proper handle
+        // 3) Proper handle
         ldr     r0, =keyboard_flags
         ldr     r0, [r0]
         ldr     r1, key_release_flag
@@ -327,7 +327,7 @@ keyboard_interrupt_handler:
                 beq     .exit_with_char
 
         .scancode_to_ascii:
-                ldr     r2, caps_lock_flag              @ TODO: when caps lock is set only affect alpha chars
+                ldr     r2, caps_lock_flag              // TODO: when caps lock is set only affect alpha chars
                 ldr     r3, shift_flag
                 orrs    r3, r2, r3
                 ldr     r2, =keyboard_flags
@@ -336,7 +336,7 @@ keyboard_interrupt_handler:
                 ite     eq
                 ldreq   r1, =keymap
                 ldrne   r1, =keymap_shifted
-                ldrb    r0, [r1, r0]                    @ scancode to ascii lookup table translate
+                ldrb    r0, [r1, r0]                    // scancode to ascii lookup table translate
 
                 ldr     r3, alt_flag
                 tst     r2, r3
@@ -349,12 +349,12 @@ keyboard_interrupt_handler:
 
                 beq     .exit_with_char
 
-@TODO: make version for ARCH_RP2040
+//TODO: make version for ARCH_RP2040
 #ifdef ARCH_RP2350
 
                 .alt_lookup:
-                        @ umlauts
-                        cmp     r0, 'A'         @ 65->196, 97->228
+                        // umlauts
+                        cmp     r0, 'A'         // 65->196, 97->228
                         it      eq
                         movseq  r0, #196
 
@@ -362,7 +362,7 @@ keyboard_interrupt_handler:
                         it      eq
                         movseq  r0, #228
 
-                        cmp     r0, 'O'         @ 79->214, 111->246
+                        cmp     r0, 'O'         // 79->214, 111->246
                         it      eq
                         movseq  r0, #214
 
@@ -370,7 +370,7 @@ keyboard_interrupt_handler:
                         it      eq
                         movseq  r0, #246
 
-                        cmp     r0, 'U'         @ 85->220, 117->252
+                        cmp     r0, 'U'         // 85->220, 117->252
                         it      eq
                         movseq  r0, #220
 
@@ -378,12 +378,12 @@ keyboard_interrupt_handler:
                         it      eq
                         movseq  r0, #252
 
-                        cmp     r0, 's'         @ 115 -> 223
+                        cmp     r0, 's'         // 115 -> 223
                         it      eq
                         movseq  r0, #223
 
-                        @ e->EUR
-                        cmp     r0, 'e'         @ 101->128
+                        // e->EUR
+                        cmp     r0, 'e'         // 101->128
                         it      eq
                         movseq  r0, #128
 
@@ -396,19 +396,19 @@ keyboard_interrupt_handler:
 
                 bl      read_byte
 
-                cmp     r0, #0xf0               @ is it key release?
+                cmp     r0, #0xf0               // is it key release?
                 beq     .key_released
 
-                @ RIGHT KEYS
+                // RIGHT KEYS
 
-                cmp     r0, #0x14               @ ctrl right
+                cmp     r0, #0x14               // ctrl right
                 beq     .ctrl_pressed
-                cmp     r0, #0x11               @ alt right
+                cmp     r0, #0x11               // alt right
                 beq     .alt_pressed
-                cmp     r0, #0x5a               @ enter
+                cmp     r0, #0x5a               // enter
                 beq     .scancode_to_ascii
 
-                @ ARROWS
+                // ARROWS
 
                 cmp     r0, #0x72
                 itt     eq
@@ -483,16 +483,15 @@ keyboard_interrupt_handler:
                 b       .exit
 
         .signal_special:
-                @ SIGNALS LIKE ^C, ^D, ^Z
+                // SIGNALS LIKE ^C, ^D, ^Z
 
         .exit:
                 cpsie   i
-                pop     {pc}
+                add     sp, sp, #16
+                ldmia   r7, {r7, pc}
 
         .exit_with_escape_code:
-                cpsie   i
-                push    {r4}
-                mov     r4, r0
+                str     r0, [sp, #8]
 
                 mov     r0, #0x1b
                 bl      write_to_keyboard_buffer
@@ -500,16 +499,18 @@ keyboard_interrupt_handler:
                 mov     r0, #0x5b
                 bl      write_to_keyboard_buffer
 
-                mov     r0, r4
+                ldr     r0, [sp, #8]
                 bl      write_to_keyboard_buffer
-                pop     {r4}
 
-                pop     {pc}
+                cpsie   i
+                add     sp, sp, #16
+                ldmia   r7, {r7, pc}
 
         .exit_with_char:
-                cpsie   i
                 bl      write_to_keyboard_buffer
-                pop     {pc}
+                cpsie   i
+                add     sp, sp, #16
+                ldmia   r7, {r7, pc}
 
 
 /**
@@ -554,34 +555,34 @@ read_byte:
         .read_upper_nibble:
                 ldr     r1, [r0]
 
-                lsrs    r1, r1, UPPER_NIBBLE_START     @ move upper nibble to the right
-                ands    r1, r1, r3                     @ leave upper nibble
+                lsrs    r1, r1, UPPER_NIBBLE_START     // move upper nibble to the right
+                ands    r1, r1, r3                     // leave upper nibble
 
-                ldrb    r1, [r4, r1]                   @ lookup in table
+                ldrb    r1, [r4, r1]                   // lookup in table
                 lsls    r1, r1, #4
                 mov     r2, r1
 
         .read_lower_nibble:
                 ldr     r1, [r0]
 
-                lsrs    r1, r1, LOWER_NIBBLE_START     @ move lower
-                ands    r1, r1, r3                     @ leave lower nibble
+                lsrs    r1, r1, LOWER_NIBBLE_START     // move lower
+                ands    r1, r1, r3                     // leave lower nibble
 
-                ldrb    r1, [r4, r1]                   @ lookup in table
+                ldrb    r1, [r4, r1]                   // lookup in table
                 add     r2, r2, r1
 
         mov     r0, r2
         pop     {r4, pc}
 
-#else @ KEYBOARD_SERIAL_INTERFACE
+#else // KEYBOARD_SERIAL_INTERFACE
 
 .thumb_func
 .align 4
 read_byte:
         push    {lr}
 
-        movs    r0, #1                  @ PIO BLOCK 1
-        movs    r1, #0                  @ SM 0
+        movs    r0, #1                  // PIO BLOCK 1
+        movs    r1, #0                  // SM 0
         bl      sm_get
 
         lsrs    r0, #24
@@ -611,8 +612,8 @@ PROC0_INTE0_OFFSET:     .word 0x248
 SIO_BASE:               .word 0xd0000000
 PPB_BASE:               .word 0xe0000000
 VTOR_OFFSET:            .word 0xed08
-NVIC_ICPR_OFFSET:       .word 0xe280            @ interrupt clear-pending register
-NVIC_ISER_OFFSET:       .word 0xe100            @ interrupt set-enable register
+NVIC_ICPR_OFFSET:       .word 0xe280            // interrupt clear-pending register
+NVIC_ISER_OFFSET:       .word 0xe100            // interrupt set-enable register
 
 key_release_flag:       .word 0b000001
 shift_flag:             .word 0b000010
@@ -634,54 +635,54 @@ keyboard_flags:         .word 0
 .section .rodata, "a"
 .align 4
 keymap:
-        .ascii "?????????????"                  @ 00-0C
-        .byte '\t'                              @ 0D = tab
-        .ascii "`?"                             @ 0E-0F
-        .ascii "?????q1???zsaw2?"               @ 10-1F
-        .ascii "?cxde43?? vftr5?"               @ 20-2F
-        .ascii "?nbhgy6???mju78?"               @ 30-3F
-        .ascii "?,kio09??./l;p-?"               @ 40-4F
-        .ascii "??'?[=????"                     @ 50-59
-        .byte '\n'                              @ 5A
-        .ascii "]?\\??"                         @ 5B-5F
-        .ascii "??????"                         @ 60-65
-        .byte '\b'                              @ 66
-        .ascii "??1?47???"                      @ 67-6F
-        .ascii "0.2568???+3-*9??"               @ 70-7F
-        .ascii "????????????????"               @ 80-8F
-        .ascii "????????????????"               @ 90-9F
-        .ascii "????????????????"               @ A0-AF
-        .ascii "????????????????"               @ B0-BF
-        .ascii "????????????????"               @ C0-CF
-        .ascii "????????????????"               @ D0-DF
-        .ascii "????????????????"               @ E0-EF
-        .byte 0xf0                              @ KEY RELEASE
-        .ascii "???????????????"                @ F0-FF
+        .ascii "?????????????"                  // 00-0C
+        .byte '\t'                              // 0D = tab
+        .ascii "`?"                             // 0E-0F
+        .ascii "?????q1???zsaw2?"               // 10-1F
+        .ascii "?cxde43?? vftr5?"               // 20-2F
+        .ascii "?nbhgy6???mju78?"               // 30-3F
+        .ascii "?,kio09??./l;p-?"               // 40-4F
+        .ascii "??'?[=????"                     // 50-59
+        .byte '\n'                              // 5A
+        .ascii "]?\\??"                         // 5B-5F
+        .ascii "??????"                         // 60-65
+        .byte '\b'                              // 66
+        .ascii "??1?47???"                      // 67-6F
+        .ascii "0.2568???+3-*9??"               // 70-7F
+        .ascii "????????????????"               // 80-8F
+        .ascii "????????????????"               // 90-9F
+        .ascii "????????????????"               // A0-AF
+        .ascii "????????????????"               // B0-BF
+        .ascii "????????????????"               // C0-CF
+        .ascii "????????????????"               // D0-DF
+        .ascii "????????????????"               // E0-EF
+        .byte 0xf0                              // KEY RELEASE
+        .ascii "???????????????"                // F0-FF
 
 .align 4
 keymap_shifted:
-        .ascii "?????????????"                  @ 00-0C
-        .byte '\t'                              @ 0D = tab
-        .ascii "`?"                             @ 0E-0F
-        .ascii "?????Q!???ZSAW@?"               @ 10-1F
-        .ascii "?CXDE$#?? VFTR%?"               @ 20-2F
-        .ascii "?NBHGY^???MJU&*?"               @ 30-3F
-        .ascii "?<KIO)(??>?L:P_?"               @ 40-4F
-        .ascii "??"                             @ 50-51
-        .byte '\"'                              @ 52
-        .ascii "?{+????"                        @ 53-59
-        .byte '\n'                              @ 5A
-        .ascii "}?|??"                          @ 5B-5F
-        .ascii "??????"                         @ 60-65
-        .byte '\b'                              @ 66
-        .ascii "??1?47???"                      @ 67-6F
-        .ascii "0.2568???+3-*9??"               @ 70-7F
-        .ascii "????????????????"               @ 80-8F
-        .ascii "????????????????"               @ 90-9F
-        .ascii "????????????????"               @ A0-AF
-        .ascii "????????????????"               @ B0-BF
-        .ascii "????????????????"               @ C0-CF
-        .ascii "????????????????"               @ D0-DF
-        .ascii "????????????????"               @ E0-EF
-        .byte 0xf0                              @ KEY RELEASE
-        .ascii "???????????????"                @ F0-FF
+        .ascii "?????????????"                  // 00-0C
+        .byte '\t'                              // 0D = tab
+        .ascii "`?"                             // 0E-0F
+        .ascii "?????Q!???ZSAW@?"               // 10-1F
+        .ascii "?CXDE$#?? VFTR%?"               // 20-2F
+        .ascii "?NBHGY^???MJU&*?"               // 30-3F
+        .ascii "?<KIO)(??>?L:P_?"               // 40-4F
+        .ascii "??"                             // 50-51
+        .byte '\"'                              // 52
+        .ascii "?{+????"                        // 53-59
+        .byte '\n'                              // 5A
+        .ascii "}?|??"                          // 5B-5F
+        .ascii "??????"                         // 60-65
+        .byte '\b'                              // 66
+        .ascii "??1?47???"                      // 67-6F
+        .ascii "0.2568???+3-*9??"               // 70-7F
+        .ascii "????????????????"               // 80-8F
+        .ascii "????????????????"               // 90-9F
+        .ascii "????????????????"               // A0-AF
+        .ascii "????????????????"               // B0-BF
+        .ascii "????????????????"               // C0-CF
+        .ascii "????????????????"               // D0-DF
+        .ascii "????????????????"               // E0-EF
+        .byte 0xf0                              // KEY RELEASE
+        .ascii "???????????????"                // F0-FF

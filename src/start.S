@@ -66,6 +66,7 @@ decl_isr_bkpt isr_invalid
 .global reset
 .align 4
 reset:
+#ifdef STANDALONE
         ldr     r0, RESETS_BASE
         ldr     r1, =0x2000             // atomic bitmask set
         ldr     r2, =0xc3a44            // reset peripherals: SPI, PIO, PADS_BANK0, IO_BANK0
@@ -75,6 +76,7 @@ reset:
                 ldr     r3, [r0]
                 tst     r3, r2
                 beq     1b
+#endif
 
 vector_setup:
         ldr     r2, PPB_BASE

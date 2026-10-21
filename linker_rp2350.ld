@@ -17,6 +17,7 @@ SECTIONS
                 *(.text*)
                 /* __cpio_init_start__ = .; */
                 /* *(.cpio_init*) */        /* For debug purposes until proper unvolatile memory support exists */
+                *(.rodata*)
                 __text_end__ = .;
         } > code
 
