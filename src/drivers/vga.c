@@ -49,6 +49,7 @@ enum PhysicalColorCode {
 void vga_init(const uint32_t hsync_pin, const uint32_t vsync_pin, const uint32_t pin_red0) {
         vga_clr_screen();
 
+#ifdef STANDALONE
         hsync_gen_init(hsync_pin);
         vsync_gen_init(vsync_pin);
         rgb_gen_init(pin_red0);
@@ -56,6 +57,7 @@ void vga_init(const uint32_t hsync_pin, const uint32_t vsync_pin, const uint32_t
         setup_vga_dma();
 
         vga_start();
+#endif
 }
 
 static void set_colors_from_escape(

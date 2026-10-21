@@ -48,13 +48,18 @@ target_link_options(os PRIVATE
         -nostdlib
 )
 
-set_target_properties(os PROPERTIES
-        LINK_DEPENDS ${CMAKE_SOURCE_DIR}/${LINKER_SCRIPT}
-        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin"
-        OUTPUT_NAME "kernel_debug.elf"
-)
-
-if (NOT DEFINED STANDALONE)
+if (DEFINED STANDALONE)
+    set_target_properties(os PROPERTIES
+            LINK_DEPENDS ${CMAKE_SOURCE_DIR}/${LINKER_SCRIPT}
+            RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin"
+            OUTPUT_NAME "kernel_debug_standalone.elf"
+    )
+elseif (NOT DEFINED STANDALONE)
+    set_target_properties(os PROPERTIES
+            LINK_DEPENDS ${CMAKE_SOURCE_DIR}/${LINKER_SCRIPT}
+            RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/bin"
+            OUTPUT_NAME "kernel_debug.elf"
+    )
     add_custom_command(
             TARGET os
             POST_BUILD
