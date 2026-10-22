@@ -169,7 +169,7 @@ int scheduler_init(void *current_main_kernel_stack) {
 
         scheduler.processes = processes;
         for (size_t i = 0; i < INITIAL_PROCESS_COUNT; ++i) { //TODO: this should be DYNAMIC
-                processes[i].stack_page_ptr = nullptr;
+                processes[i] = (struct Process){0};
         }
 
         scheduler.total_allocated_memory = 0;
