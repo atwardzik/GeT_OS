@@ -274,6 +274,15 @@ wake_up_if_applicable:
 }
 
 void print_screen(void) {
+        const struct Process *process = scheduler_get_current_process();
+        int fd = sys_open("/mnt/disk0/scrsht.raw", O_CREAT | O_WRONLY, 0);
+        if (fd < 0) {
+                return;
+        }
+
+        const void *const screen_buffer = (void *) 0x2003'5000;
+        int res = sys_write(fd, screen_buffer, 307'200);
+
         __asm__("bkpt    #0");
 }
 
