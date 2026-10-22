@@ -196,11 +196,17 @@ static void handle_ansi_escape_sequence(int c) {
         if (c == ARROW_LEFT) {
                 if (keyboard_buffer_current_position) {
                         keyboard_buffer_current_position -= 1;
+                        tty_echo(0x1b);
+                        tty_echo('[');
+                        tty_echo('D');
                 }
         }
         else if (c == ARROW_RIGHT) {
                 if (keyboard_buffer_current_position < keyboard_buffer_final_length) {
                         keyboard_buffer_current_position += 1;
+                        tty_echo(0x1b);
+                        tty_echo('[');
+                        tty_echo('C');
                 }
         }
         else if (c == ARROW_UP || c == ARROW_DOWN) {
@@ -234,8 +240,6 @@ void write_to_keyboard_buffer(int c) {
                 //FIXME: delivered escape sequences should be only for special keys on kbrd; sequences can be 3 or 4 bytes
                 escape_sequence[escape_sequence_position] = (char) c;
 
-                write_byte(c);
-
                 if (escape_sequence_position == 2) {
                         c = (escape_sequence[0] << 16) | (escape_sequence[1] << 8) | escape_sequence[2];
 
@@ -267,6 +271,10 @@ wake_up_if_applicable:
         if (!tty_canonical_mode || (tty_canonical_mode && newline_present)) {
                 wake_up_interruptible(&keyboard_device_file_stream->read_wait); //FIXME: not this proceess!!
         }
+}
+
+void print_screen(void) {
+        __asm__("bkpt    #0");
 }
 
 static int get_written_characters_count(void) {
