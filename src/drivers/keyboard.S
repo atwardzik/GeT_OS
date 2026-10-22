@@ -151,7 +151,7 @@ init_keyboard:
 
         // 1) Load program
         ldr     r0, =ps2_serial_rcv
-        movs    r1, #11                 // Total of 11 words
+        movs    r1, #12                 // Total of 12 words
         movs    r2, #1                  // PIO1
         bl      load_pio_prog
 
@@ -159,7 +159,7 @@ init_keyboard:
         // (CLK pin << 24) | (WRAP_TARGET << 7) | (WRAP << 12)
         movs    r0, #1                  // PIO BLOCK 1
         movs    r1, #0                  // State Machine 0
-        ldr     r2, =0xa000             // bottom wrap at 0, top wrap at 10
+        ldr     r2, =0xb000             // bottom wrap at 0, top wrap at 11
         lsls    r3, r5, #24             // set JMPPIN
         orrs    r2, r2, r3              // execctrl = jmppin | wrap
         bl      setup_pio_execctrl
@@ -175,7 +175,7 @@ init_keyboard:
         // 4) setup autopush
         movs    r0, #1
         movs    r1, #0
-        ldr     r2, =0x80850000         // IN_SHIFTDIR (18 bit), AUTOPUSH (16 bit), PUSH_THRESH (24:20 bits)
+        ldr     r2, =0x80040000         // IN_SHIFTDIR (18 bit), AUTOPUSH (16 bit), PUSH_THRESH (24:20 bits)
         bl      setup_pio_shiftctrl
 
         // 5) setup interrupt
@@ -236,6 +236,7 @@ ps2_serial_rcv:
         .word 0x20e0    // 8:            wait    1 jmppin, 0
         .word 0x2060    // 9:            wait    0 jmppin, 0
         .word 0x20e0    // 10:           wait    1 jmppin, 0
+        .word 0x8000    // 11:           push
                         //       .wrap
 
 #endif
@@ -399,6 +400,10 @@ keyboard_interrupt_handler:
                 cmp     r0, #0xf0               // is it key release?
                 beq     .key_released
 
+                // shift
+                cmp     r0, #0x12
+                beq     .shift_pressed
+
                 // RIGHT KEYS
 
                 cmp     r0, #0x14               // ctrl right
@@ -429,6 +434,17 @@ keyboard_interrupt_handler:
                 itt     eq
                 moveq   r0, ARROW_LEFT
                 beq     .exit_with_escape_code
+
+                // Print Screen
+                cmp     r0, #0x7c
+                bne     .exit
+                ldr     r1, =keyboard_flags
+                ldr     r1, [r1]
+                ldr     r2, shift_flag
+                tst     r1, r2
+                beq     .exit
+
+                bl      print_screen
 
                 b       .exit
 
@@ -536,7 +552,8 @@ set_flag:
 clr_flag:
         ldr     r1, =keyboard_flags
         ldr     r2, [r1]
-        eors    r2, r2, r0
+        mvn     r0, r0                  // r0 = ~r0
+        ands    r2, r2, r0
         str     r2, [r1]
 
         bx      lr
