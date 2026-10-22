@@ -216,7 +216,7 @@ static uint16_t FAT16_find_next_free_cluster(struct FAT16_SuperBlock *sb) {
         const auto cluster_count = sb->boot_record.small_part_sectors_count / sb->boot_record.sectors_per_cluster;
 
         for (int i = 0; i < cluster_count / FAT_SECTOR_CACHE_SIZE; ++i) {
-                sb_op->hd_op.read_block(sb->fat_first_sector,
+                sb_op->hd_op.read_block(sb->fat_first_sector + i,
                                         sizeof(uint16_t) * FAT_SECTOR_CACHE_SIZE,
                                         (char *) sb->FAT_sector_cache
                 );
@@ -578,6 +578,9 @@ static ssize_t FAT16_write(struct File *file, void *buf, const size_t count, con
         const auto parent = (struct FAT16_Inode *) inode->vfs_inode.parent;
         const auto rootdir = (struct FAT16_Inode *) inode->vfs_inode.i_sb->s_root->inode;
 
+        int rc = 0;
+        ssize_t total_written_bytes = 0;
+
         if (inode == rootdir) {
                 return write_consecutive_sectors(inode, inode->absolute_first_sector, buf, count, file_offset);
         }
@@ -593,22 +596,27 @@ static ssize_t FAT16_write(struct File *file, void *buf, const size_t count, con
                 return -ENOENT;
         }
         struct FAT16_DirectoryEntry *dentry = &dentries.dentries[inode->parent_dentry_index];
+        inode->first_cluster = dentry->first_cluster;
 
         switch (adjust_allocated_clusters(inode, file_offset + count)) {
                 case INVALID_CLUSTER:
-                        return -ENOENT;
+                        rc = -ENOENT;
+                        goto update;
                 case NO_AVAILABLE_CLUSTERS:
-                        return -EDQUOT;
+                        rc = -EDQUOT;
+                        goto update;
                 default:
                         break;
         }
         dentry->first_cluster = inode->first_cluster;
 
-        const ssize_t total_written_bytes = FAT16_write_cluster_chain(file, buf, count, file_offset);
+        total_written_bytes = FAT16_write_cluster_chain(file, buf, count, file_offset);
         if (total_written_bytes < 0) {
                 return 1; //why would that happen?
         }
+        rc = total_written_bytes;
 
+update:
         //update parent (root) directory entries
         inode->vfs_inode.i_size = file_offset + total_written_bytes;
         dentry->file_size = file_offset + total_written_bytes;
@@ -620,7 +628,7 @@ static ssize_t FAT16_write(struct File *file, void *buf, const size_t count, con
         );
         kfree(dentries.dentries);
 
-        return total_written_bytes;
+        return rc;
 }
 
 static int find_free_dentry(const struct FAT16_DirectoryEntries *dentries) {

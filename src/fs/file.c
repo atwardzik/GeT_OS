@@ -273,8 +273,10 @@ int sys_write(const int file, char *ptr, const int len) {
                 return -1;
         }
 
-        size_t written_bytes = current_file->f_op->write(current_file, ptr, len, current_file->f_pos);
-        current_file->f_pos += written_bytes;
+        ssize_t written_bytes = current_file->f_op->write(current_file, ptr, len, current_file->f_pos);
+        if (written_bytes >= 0) {
+                current_file->f_pos += written_bytes;
+        }
 
         return written_bytes;
 }
