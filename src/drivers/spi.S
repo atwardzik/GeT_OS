@@ -33,11 +33,13 @@
 spi_init:
         push    {r4-r7, lr}
 
+        mov     r4, r0
         mov     r5, r1
         mov     r6, r2
         mov     r7, r3
         bl      spi_set_baudrate
 
+        mov     r0, r4
         spi_determine_address
         mov     r4, r0
 
