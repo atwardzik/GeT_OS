@@ -22,9 +22,9 @@ static constexpr int DEFAULT_PROCESS_STACK_SIZE = 2 * 1024;
 
 static constexpr off_t DEFAULT_PROCESS_SP_OFFSET = 1 * 1024;
 
-static constexpr int IDLE_PROCESS_STACK_SIZE = 256;
+static constexpr int IDLE_PROCESS_STACK_SIZE = 1024;
 
-static constexpr off_t IDLE_PROCESS_SP_OFFSET = 128;
+static constexpr off_t IDLE_PROCESS_SP_OFFSET = 512;
 
 #define RECALL_STATE_FROM(sp)                           \
         __asm__(                                        \
@@ -109,7 +109,11 @@ static struct {
 constexpr pid_t PID_IDLE = 0xffff;
 constexpr pid_t PID_INIT = 1;
 
-static void idle(void) { while (1); }
+static void idle(void) {
+        while (1) {
+                __asm__("wfi");
+        }
+}
 
 extern void action_ignore(int);
 
@@ -129,6 +133,7 @@ static int create_idle_process() {
         struct Process process = {
                 .pid = PID_IDLE,
                 .pgid = 0,
+                .pname = "IDLE",
                 .pstate = READY,
                 .priority_level = 0,
                 .kernel_mode = false,
@@ -348,6 +353,7 @@ static struct Process *create_blank_process(void (*process_entry_ptr)(void), voi
         struct Process process = {
                 .pid = pid,
                 .pgid = 0,
+                .pname = argv[0],
                 .pstate = NEW,
                 .priority_level = 0,
                 .kernel_mode = false,

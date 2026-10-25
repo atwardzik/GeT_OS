@@ -49,6 +49,7 @@ struct Process {
 
         pid_t pid;
         pid_t pgid;
+        const char *pname;
         enum State pstate;
         unsigned int priority_level;
         int exit_code;
