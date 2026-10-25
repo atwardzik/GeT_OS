@@ -28,15 +28,15 @@ experimental project intended for learning and research.
 
 | Feature                                       | Status | Notes                                                                                                                           |
 |-----------------------------------------------|--------|---------------------------------------------------------------------------------------------------------------------------------|
-| Dynamic memory allocation                     | ✅      | Modified Linked-List allocator                                                                                                  |
-| ELF executables                               | ✅      | Userspace programs can be compiled and linked into ordinary ELF files                                                           |
-| Dynamic program loader                        | ✅      | Support for linking userspace programs against dynamic libraries – e.g. libc                                                    |
-| Custom LIBC                                   | ✅      | For kernel and userspace                                                                                                        |
-| Multitasking                                  | ✅      | Pre-emptive task scheduler                                                                                                      |
-| POSIX-like syscalls                           | ✅      | [List of syscalls](https://github.com/atwardzik/os_kernel/blob/main/include/syscall_codes.h)                                    |
-| Filesystem                                    | ✅      | Virtual File System interface and RAMFS                                                                                         |
-| Networking                                    | ✅      | Raw sockets, TCP client and server                                                                                              |
-| FAT16 SD Cards support                        | ✅      | Basic FAT16 support, currently for files on the root directory. It is recommended to store initramfs and system binaries there. |
+| Dynamic memory allocation                     | ✅     | Linked-List allocator                                                                                                           |
+| ELF executables                               | ✅     | Userspace programs can be compiled and linked into ordinary ELF files                                                           |
+| Dynamic program loader                        | ✅     | Support for linking userspace programs against dynamic libraries – e.g. libc                                                    |
+| Custom LIBC                                   | ✅     | For kernel and userspace                                                                                                        |
+| Multitasking                                  | ✅     | Pre-emptive task scheduler                                                                                                      |
+| POSIX-like syscalls                           | ✅     | [List of syscalls](https://github.com/atwardzik/os_kernel/blob/main/include/syscall_codes.h)                                    |
+| Filesystem                                    | ✅     | Virtual File System interface and RAMFS                                                                                         |
+| Networking                                    | ✅     | Raw sockets, TCP client and server                                                                                              |
+| FAT16 SD Cards support                        | ✅     | Basic FAT16 support, currently for files on the root directory. It is recommended to store initramfs and system binaries there. |
 | EXT2 support                                  | 🚧     | Planned                                                                                                                         |
 | Multithreading                                | 🚧     | In progress                                                                                                                     |
 | Custom C compiler and assembler for userspace | 🚧     | In progress                                                                                                                     |
@@ -45,20 +45,19 @@ experimental project intended for learning and research.
 
 | Driver                   | Status | Notes                                                         |
 |--------------------------|--------|---------------------------------------------------------------|
-| PS/2 keyboard driver     | ✅      | Both immediate and parallel interfaces (with shift-registers) |
-| UART communication       | ✅      |                                                               |
-| VGA driver (640x480)     | ✅      | Scaling up resolutions is in progress                         |
-| SD card driver           | ✅      | Requires additional error checks and refactoring              |
-| Ethernet (WIZnet W5100S) | ✅      | Raw sockets, TCP client and server                            |
+| PS/2 keyboard driver     | ✅     | Both immediate and parallel interfaces (with shift-registers) |
+| UART communication       | ✅     |                                                               |
+| VGA driver (640x480)     | ✅     | Scaling up resolutions is in progress                         |
+| SD card driver           | ✅     | Requires additional error checks and refactoring              |
+| Ethernet (WIZnet W5100S) | ✅     | Raw sockets, TCP client and server                            |
 
 ## Future plans
 
-- Extending shell and writing user-space programs like vim-like editor
+- Extending shell and writing more user-space programs
 - Introducing Rust into kernel
 - Memory Protection
-- After full filesystem support move some parts of firmware into bootloader. The kernel and the initramfs should reside
-  in the `/boot` directory
 - PS2 mouse driver and a simple GUI
+- Adding in-system simple debugging
 
 ## Building
 
@@ -73,17 +72,24 @@ experimental project intended for learning and research.
 ```bash
 git clone https://github.com/atwardzik/os_kernel.git
 cd os_kernel
-cmake -DCMAKE_EXPORT_COMMANDS=ON -DARCH_RP2350=1 -B build
+cmake -DCMAKE_EXPORT_COMMANDS=ON -DARCH_RP2350=1 -DSTANDALONE=1 -B build
 cd build
 make -j4
 ```
 
 Depending on your needs you should choose `-DARCH_RP2040=1` or `-DARCH_RP2350=1`.
+Also, if you want a standalone executable that can be put directly to SRAM by the debugger
+pass `-DSTANDALONE=1`. Without this option the kernel is compiled into image that
+will be loaded by the bootloader.
 
 ## Running
 
-Current versions are loaded directly into RAM using a Raspberry Pi Debug Probe. A standalone bootloader is not yet
-implemented.
+For using the OS put the kernel image (`bin/kernel.img`) into the `BOOT` partition of
+your SD card. The partition must be formatted as FAT16. For the platform to run
+the OS custom bootloader was created, available
+[here](https://github.com/atwardzik/bootloader).
+
+During development, the kernel is loaded directly into SRAM using a Raspberry Pi Debug Probe.
 
 ### Minimal Software Configuration
 
@@ -139,10 +145,20 @@ formatting.
 
 Before submitting a pull request, please format your code using `clang-format`.
 
+## Screenshots
+
+Below some screenshots from the system runtime can be found. These are taken using Print Screen button on the keyboard
+and are written into the SD card as raw vidram dump. In order to preview the files in .ppm
+format [this script](scripts/image_retransform.py) must be used.
+
+| Startup                        | File Creation            | vi clone             |
+|--------------------------------|--------------------------|----------------------|
+| ![Startup](images/startup.png) | ![echo](images/echo.png) | ![vi](images/vi.png) |
+
 ## License
 
 Open-source and released under the BSD 3-Clause License. Feel free to use,
 modify, and distribute the code in accordance with the terms specified in the
 license.
 
-Copyright (C) 2024-2026 Artur Twardzik
+Copyright (C) 2023-2026 Artur Twardzik
