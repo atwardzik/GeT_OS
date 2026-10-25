@@ -42,23 +42,28 @@ uart_init:
         str     r0, [r1, UART_FBRD]
 
         // 2) Set word length
-        movs    r0, #0b01110000        // Bit 6-7 - word length = 8 bit; Bit 5 - fifo enable
+        movs    r0, #0b01110000         // Bit 6-7 - word length = 8 bit; Bit 5 - fifo enable
         str     r0, [r1, UART_LCR_H]
 
         // 3) enable uart
-        movs    r0, #3                 // Bit 9 - rx_enable; Bit 8 - tx_enable
+        movs    r0, #3                  // Bit 9 - rx_enable; Bit 8 - tx_enable
         lsls    r0, #8
-        adds    r0, #1                 // Bit 1 - uart_enable
+        adds    r0, #1                  // Bit 1 - uart_enable
         str     r0, [r1, UART_CR]
 
         // 4) select pins
-        movs    r0, #0                 // UART0_TX
-        movs    r1, #2                 // 2 - UART
+        movs    r0, #0                  // UART0_TX
+        movs    r1, #2                  // 2 - UART
         bl      GPIO_function_select
 
-        movs    r0, #1                 // UART0_RX
-        movs    r1, #2                 // 2 - UART
+        movs    r0, #1                  // UART0_RX
+        movs    r1, #2                  // 2 - UART
         bl      GPIO_function_select
+
+        movs    r0, #1                  // UART0_RX
+        movs    r1, #1                  // pull up
+        bl      set_pin_pull
+
 
         // 5) set uart receive interrupt
         // clear pending and set ena
