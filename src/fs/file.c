@@ -249,6 +249,7 @@ int sys_unlink(const char *name) {
 
         struct Dentry dentry = {
                 .inode = file,
+                .name = filename,
         };
         return file->i_op->unlink(parent, &dentry);
 }

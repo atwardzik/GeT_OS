@@ -222,7 +222,8 @@ static uint16_t FAT16_find_next_free_cluster(struct FAT16_SuperBlock *sb) {
                 );
                 sb->FAT_cached_sector = i;
 
-                for (int j = 0; j < FAT_SECTOR_CACHE_SIZE; ++j) {
+                int j = i == 0 ? 2 : 0;
+                for (; j < FAT_SECTOR_CACHE_SIZE; ++j) {
                         if (sb->FAT_sector_cache[j] == 0x0000) {
                                 return i * FAT_SECTOR_CACHE_SIZE + j;
                         }
@@ -676,6 +677,66 @@ static int FAT16_create_file(struct FAT16_Inode *parent, const struct Dentry *ne
         return 0;
 }
 
+static int invalidate_cluster_chain(struct FAT16_SuperBlock *sb, const uint16_t first_cluster) {
+        uint16_t cluster = first_cluster;
+        uint16_t next_cluster;
+        do {
+                next_cluster = FAT16_find_next_cluster(sb, cluster);
+                FAT16_mark_cluster(sb, cluster, 0);
+
+                cluster = next_cluster;
+        } while (next_cluster < 0xfff0);
+
+        return 0;
+}
+
+static int FAT16_delete_file(struct FAT16_Inode *parent, struct Dentry *file) {
+        const auto inode = (struct FAT16_Inode *) file->inode;
+        const auto rootdir = (struct FAT16_Inode *) inode->vfs_inode.i_sb->s_root->inode;
+
+        int rc = -ENOENT;
+
+        if (inode == rootdir) {
+                return -EINVAL;
+        }
+
+        //fixme: temporary condition for writing only into root directory
+        if (parent != rootdir) {
+                return -EINVAL;
+        }
+
+        const struct FAT16_DirectoryEntries dentries = FAT16_get_all_dentries(parent);
+        if (!dentries.dentries) {
+                return -ENOENT; // why would that happen?
+        }
+
+        for (int i = 0; i < dentries.count; ++i) {
+                struct FAT16_DirectoryEntry *dirent = &dentries.dentries[i];
+                char buf[16];
+                FAT16_decode_entry_name(dirent, buf);
+                if (strcasecmp(buf, file->name) == 0) {
+                        invalidate_cluster_chain((struct FAT16_SuperBlock *) inode->vfs_inode.i_sb,
+                                                 dirent->first_cluster
+                        );
+
+                        // TODO: support LFN, change all entries to start with 0xe5
+                        dirent->filename[0] = 0xe5;
+
+                        struct File parent_wrapper = {.f_inode = (struct VFS_Inode *) parent};
+                        FAT16_write(&parent_wrapper,
+                                    dentries.dentries,
+                                    dentries.count * sizeof(struct FAT16_DirectoryEntry),
+                                    0
+                        );
+
+                        rc = 0;
+                }
+        }
+
+        kfree(dentries.dentries);
+        return rc;
+}
+
 
 static struct FAT16_BootRecord read_boot_sector(const uint32_t block_number, const struct HardDriveOperations *hd_op) {
         char buf[512];
@@ -696,6 +757,8 @@ struct Dentry *FAT16_mount(
         i_op->lookup = FAT16_lookup;
         typedef int (*create_fn)(struct VFS_Inode *, struct Dentry *, uint16_t);
         i_op->create = (create_fn) FAT16_create_file;
+        typedef int (*unlink_fn)(struct VFS_Inode *, struct Dentry *);
+        i_op->unlink = (unlink_fn) FAT16_delete_file;
 
         i_fop = kmalloc(sizeof(*i_fop));
         i_fop->read = FAT16_read;
