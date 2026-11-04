@@ -128,6 +128,8 @@ int open(const char *name, int flags, int mode);
 
 int close(int file);
 
+int unlink(const char *name);
+
 int ioctl(int file, unsigned long request, void *arg);
 
 int fstat(int file, struct stat *st);

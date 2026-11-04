@@ -27,6 +27,7 @@ syscall_fn syscall_table[] = {
         [LSEEK_SVC] = (syscall_fn) sys_lseek,
         [FSTAT_SVC] = (syscall_fn) sys_fstat,
         [GETCWD_SVC] = (syscall_fn) sys_getcwd,
+        [UNLINK_SVC] = (syscall_fn) sys_unlink,
 
         [GET_PID_SVC] = (syscall_fn) sys_getpid,
         [GET_PPID_SVC] = (syscall_fn) sys_getppid,

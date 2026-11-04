@@ -72,6 +72,10 @@ int close(int file) {
         SYSCALL_RETURN(int, CLOSE_SVC)
 }
 
+int unlink(const char *name) {
+        SYSCALL_RETURN(int, UNLINK_SVC)
+}
+
 int ioctl(int file, unsigned long request, void *arg) {
         SYSCALL_RETURN(int, IOCTL_SVC)
 }

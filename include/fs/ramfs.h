@@ -28,6 +28,8 @@ struct Dentry *ramfs_lookup(struct VFS_Inode *parent, struct Dentry *file, unsig
 
 int ramfs_create_file(struct VFS_Inode *parent, struct Dentry *new_file, uint16_t mode);
 
+int ramfs_unlink(struct VFS_Inode *parent, struct Dentry *file);
+
 ssize_t ramfs_write(struct File *file, void *buf, size_t count, off_t file_offset);
 
 ssize_t ramfs_read(struct File *file, void *buf, size_t count, off_t file_offset);

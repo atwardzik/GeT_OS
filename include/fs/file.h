@@ -91,6 +91,8 @@ struct InodeOperations {
 
         int (*create)(struct VFS_Inode *, struct Dentry *, uint16_t);
 
+        int (*unlink)(struct VFS_Inode *, struct Dentry *);
+
         // int (*rename)(
         //         struct VFS_Inode *old_dir, struct Dentry *old_dentry,
         //         struct VFS_Inode *new_dir, struct Dentry *new_dentry,
@@ -185,6 +187,8 @@ int sys_lseek(int file, off_t offset, int whence);
 int sys_fstat(int file, struct stat *st);
 
 char *sys_getcwd(char *buf, unsigned int len);
+
+int sys_unlink(const char *name);
 
 
 struct Dentry *mount_partition(

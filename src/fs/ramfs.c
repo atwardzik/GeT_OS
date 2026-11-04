@@ -34,6 +34,7 @@ struct VFS_Inode *ramfs_alloc_inode(struct SuperBlock *sb) {
         struct InodeOperations *i_op = kmalloc(sizeof(*i_op));
         i_op->lookup = &ramfs_lookup;
         i_op->create = &ramfs_create_file;
+        i_op->unlink = &ramfs_unlink;
 
         struct FileOperations *i_fop = kmalloc(sizeof(*i_fop));
         i_fop->read = ramfs_read;
@@ -126,6 +127,18 @@ int ramfs_create_file(struct VFS_Inode *parent, struct Dentry *new_file, uint16_
         parent->i_fop->write(&parent_handler, directory_entry, sizeof(struct DirectoryEntry), parent->i_size);
 
         kfree(directory_entry);
+        return 0;
+}
+
+int ramfs_unlink(struct VFS_Inode *parent, struct Dentry *file) {
+        struct RAMFS_Inode *inode = (struct RAMFS_Inode *) file->inode;
+        kfree(inode->file_begin);
+        kfree(inode->vfs_inode.i_fop);
+        kfree(inode->vfs_inode.i_op);
+        kfree(inode);
+
+        parent->i_size -= sizeof(struct DirectoryEntry); // TODO: should parent directory be sometimes shrunk?
+
         return 0;
 }
 

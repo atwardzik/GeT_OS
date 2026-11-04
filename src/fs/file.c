@@ -228,6 +228,30 @@ int sys_close(int file) {
         return 0;
 }
 
+int sys_unlink(const char *name) {
+        char *path = get_file_path(name);
+
+        const char *filename;
+        if (path) {
+                filename = strrchr(name, '/') + 1;
+        }
+        else {
+                filename = name;
+        }
+
+        struct VFS_Inode *parent = get_parent_directory(path);
+        kfree(path);
+        struct VFS_Inode *file = get_file(parent, filename);
+
+        if (!file) {
+                return -ENOENT;
+        }
+
+        struct Dentry dentry = {
+                .inode = file,
+        };
+        return file->i_op->unlink(parent, &dentry);
+}
 
 int sys_read(int file, char *ptr, int len) {
         struct Process const *current_process = scheduler_get_current_process();
