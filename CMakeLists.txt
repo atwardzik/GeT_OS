@@ -20,7 +20,15 @@ if (DEFINED STANDALONE)
     add_compile_definitions(STANDALONE=1)
 endif ()
 
+if (DEFINED TESTS)
+    add_compile_definitions(TESTS=1)
+endif ()
+
 project(os LANGUAGES C ASM)
+
+add_compile_options(
+        "-ffile-prefix-map=${CMAKE_SOURCE_DIR}=."
+)
 
 include_directories(${CMAKE_SOURCE_DIR} include tests)
 link_directories(${CMAKE_SOURCE_DIR} include tests)
@@ -42,6 +50,13 @@ add_executable(os
         $<TARGET_OBJECTS:vi>
         $<TARGET_OBJECTS:klibc>
 )
+
+if (DEFINED TESTS)
+    add_subdirectory(tests)
+    target_sources(os PRIVATE
+            $<TARGET_OBJECTS:tests>
+    )
+endif ()
 
 target_link_options(os PRIVATE
         -T${LINKER_SCRIPT}
