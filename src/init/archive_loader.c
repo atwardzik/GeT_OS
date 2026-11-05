@@ -2,10 +2,10 @@
 // Created by Artur Twardzik on 17/08/2026.
 //
 
+#include "init.h"
+
 #include "errno.h"
 #include "libc.h"
-#include "fs/file.h"
-#include "kernel/memory.h"
 
 struct cpio_newc_header {
         char c_magic[6];
@@ -28,6 +28,8 @@ constexpr int cpio_header_len = sizeof(struct cpio_newc_header);
 
 
 int load_initramfs(void) {
+        printf("\x1b[96;49m[!] Unpacking initramfs\x1b[0m\n");
+
         const int fd = open("/mnt/disk0/initrfs.cio", O_RDONLY, 0);
         if (fd < 0) {
                 return ENOENT;
@@ -96,10 +98,10 @@ int load_initramfs(void) {
                         lseek(fd, padding % 4, SEEK_CUR);
 
                         // char file_buffer[c_filesize]; //malloc or it will go VERY bad, as e.g. gsh is 8060 bytes!!!
-                        char *file_buffer = kmalloc(sizeof(char) * c_filesize);
+                        char *file_buffer = malloc(sizeof(char) * c_filesize);
                         read(fd, file_buffer, c_filesize);
                         write(created_fd, file_buffer, c_filesize);
-                        kfree(file_buffer);
+                        free(file_buffer);
 
                         close(created_fd);
 

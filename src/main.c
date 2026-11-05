@@ -1,4 +1,3 @@
-#include "libc.h"
 #include "tty.h"
 #include "drivers/gpio.h"
 #include "drivers/sd_card.h"
@@ -7,6 +6,7 @@
 #include "fs/file.h"
 #include "fs/mbr.h"
 #include "fs/ramfs.h"
+#include "init/init.h"
 #include "kernel/error.h"
 #include "kernel/memory.h"
 #include "kernel/network.h"
@@ -16,8 +16,6 @@
 #ifdef TESTS
 #include "tests.h"
 #endif
-
-extern void PATER_ADAMVS(int argc, char *argv[]);
 
 int main(void) {
 #ifdef STANDALONE
