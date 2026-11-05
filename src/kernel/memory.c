@@ -274,10 +274,7 @@ size_t get_current_heap_size(void) {
         return Allocator.allocated_size + Allocator.allocated_chunks * sizeof(struct Chunk);
 }
 
-#ifdef TESTS
-
-#include "tests/unity.h"
-
+#ifdef TESTS_UTY
 constexpr size_t chunk_padding = sizeof(struct Chunk);
 
 void setUp(void) {

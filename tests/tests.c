@@ -33,11 +33,12 @@ void run_userspace_tests(void) {
         test_proc_exec_return();
         test_simple_elf_exec();
 
+        printf("\nAutomatic verification tests for user space done.\n");
 
+#if 0
         char *params[] = {"vi", "/mnt/disk0/start.s", nullptr};
         [[maybe_unused]] const int vi_pid = spawnp((void (*)(void)) run_editor, nullptr, nullptr, params, nullptr);
         int code;
         const int returned_pid = wait(&code);
-
-        printf("\nAutomatic verification tests for user space done.\n");
+#endif
 }

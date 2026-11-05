@@ -32,6 +32,7 @@ int main(int argc, char *argv[]) {
         }
 
         free(buf);
+        close(dirfd);
 
         return 0;
 }

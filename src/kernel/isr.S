@@ -185,7 +185,7 @@ isr_usagefault:
         adr     r0, usagefault_msg
         bl      printk
         bl      sys_getpid
-        mov     r1, #15         // SIGKILL
+        mov     r1, #9                  // SIGKILL
         bl      sys_kill
         bl      context_switch
 

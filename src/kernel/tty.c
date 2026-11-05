@@ -283,7 +283,7 @@ void print_screen(void) {
         const void *const screen_buffer = (void *) 0x2003'5000;
         int res = sys_write(fd, screen_buffer, 307'200);
 
-        __asm__("bkpt    #0");
+        // __asm__("bkpt    #0");
 }
 
 static int get_written_characters_count(void) {

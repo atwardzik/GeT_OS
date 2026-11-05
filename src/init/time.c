@@ -22,12 +22,12 @@ void set_current_time(void) {
                 stime(&unix_time);
                 return;
         }
-        struct sockaddr_in source = {AF_INET, htons(2512)};
+        struct sockaddr_in source = {AF_INET, htons(2513)};
         bind(sockfd, (struct sockaddr *) &source, sizeof(source));
 
         struct sockaddr_in dest = {AF_INET, htons(123)};
-        inet_aton("192.168.1.57", &dest.sin_addr);
-        // inet_aton("216.239.35.0", &dest.sin_addr); // time.google.com
+        // inet_aton("192.168.1.57", &dest.sin_addr);
+        inet_aton("216.239.35.0", &dest.sin_addr); // time.google.com
 
         if (connect(sockfd, (struct sockaddr *) &dest, sizeof(dest)) < 0) {
                 dprintf(2, "Error while trying to connect - connection timed out\n");
