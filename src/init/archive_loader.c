@@ -7,7 +7,6 @@
 #include "fs/file.h"
 #include "kernel/memory.h"
 
-#if 0
 struct cpio_newc_header {
         char c_magic[6];
         char c_ino[8];
@@ -25,12 +24,13 @@ struct cpio_newc_header {
         char c_check[8];
 };
 
-int load_initramfs(struct VFS_Inode *root) {
-        struct Dentry dentry = {.name = "initrfs.cio"};
-        root->i_op->lookup(root, &dentry, 0);
-        const int fd = sys_open("/mnt/disk0/initrfs.cio", O_RDONLY, 0);
+constexpr int cpio_header_len = sizeof(struct cpio_newc_header);
+
+
+int load_initramfs(void) {
+        const int fd = open("/mnt/disk0/initrfs.cio", O_RDONLY, 0);
         if (fd < 0) {
-                return -ENOENT;
+                return ENOENT;
         }
 
         // This is not optimal solution. The one would be to load multiples of 512 chunks
@@ -41,7 +41,7 @@ int load_initramfs(struct VFS_Inode *root) {
 
         while (1) {
                 char header_buffer[cpio_header_len];
-                if (sys_read(fd, header_buffer, cpio_header_len) < cpio_header_len) {
+                if (read(fd, header_buffer, cpio_header_len) < cpio_header_len) {
                         dprintf(2, "CPIO header broken. Could not read header.");
                 }
 
@@ -52,14 +52,14 @@ int load_initramfs(struct VFS_Inode *root) {
                         break;
                 }
 
-                const off_t current_offset = sys_lseek(fd, 0, SEEK_CUR);
+                const off_t current_offset = lseek(fd, 0, SEEK_CUR);
                 char next_bytes[10];
-                sys_read(fd, next_bytes, 10);
+                read(fd, next_bytes, 10);
                 if (memcmp(next_bytes, "TRAILER!!!", 10) == 0) {
                         printf("\x1b[96;49m[!] Unpacking ended successfully.\x1b[0m\n");
                         break;
                 }
-                sys_lseek(fd, current_offset, SEEK_SET);
+                lseek(fd, current_offset, SEEK_SET);
 
 
                 char buf[128] = {};
@@ -77,24 +77,25 @@ int load_initramfs(struct VFS_Inode *root) {
                         break;
                 }
                 buf[127] = 0;
-                sys_read(fd, buf, c_namesize);
+                read(fd, buf, c_namesize);
 
 
                 if ((c_mode & 0xf000) == 0x4000) {
-                        const int dirfd = sys_open(buf, O_DIRECTORY | O_CREAT, 0);
-                        sys_close(dirfd);
+                        const int dirfd = open(buf, O_DIRECTORY | O_CREAT, 0);
+                        close(dirfd);
 
-                        const off_t offset = sys_lseek(fd, 0, SEEK_CUR);
+                        const off_t offset = lseek(fd, 0, SEEK_CUR);
                         const int padding = 4 - (offset % 4);
-                        sys_lseek(fd, padding % 4, SEEK_CUR);
+                        lseek(fd, padding % 4, SEEK_CUR);
                 }
                 else {
-                        const int created_fd = sys_open(buf, O_CREAT, 0);
+                        const int created_fd = open(buf, O_CREAT, 0);
 
-                        off_t offset = sys_lseek(fd, 0, SEEK_CUR);
+                        off_t offset = lseek(fd, 0, SEEK_CUR);
                         int padding = 4 - (offset % 4);
-                        sys_lseek(fd, padding % 4, SEEK_CUR);
+                        lseek(fd, padding % 4, SEEK_CUR);
 
+                        // char file_buffer[c_filesize]; //malloc or it will go VERY bad, as e.g. gsh is 8060 bytes!!!
                         char *file_buffer = kmalloc(sizeof(char) * c_filesize);
                         read(fd, file_buffer, c_filesize);
                         write(created_fd, file_buffer, c_filesize);
@@ -107,6 +108,4 @@ int load_initramfs(struct VFS_Inode *root) {
                         lseek(fd, padding % 4, SEEK_CUR);
                 }
         }
-        return 0;
 }
-#endif
