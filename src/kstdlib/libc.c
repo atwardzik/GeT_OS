@@ -512,7 +512,7 @@ int vdprintf(int fd, const char *format, va_list vlist) {
                 write(fd, ptr_begin, len);
 
                 ptr_end += 1;
-                if (ptr_end == format_end) {
+                if (ptr_end >= format_end) {
                         break;
                 }
                 switch (*ptr_end) {
@@ -817,62 +817,48 @@ char *ctime(const time_t *time) {
         memset(tstr, 0, 26);
         time_t time_left = *time;
 
-        time_t tmp = 0, rem = 0;
+        constexpr time_t hour_seconds = 60 * 60;
+        constexpr time_t day_seconds = 24 * hour_seconds;
+        constexpr time_t year_seconds = 365 * day_seconds;
+        constexpr time_t leap_year_seconds = year_seconds + day_seconds;
         int year = 1970;
-        while (tmp <= time_left) {
-                if (is_leap(year)) {
-                        tmp += 366 * 24 * 60 * 60;
-                }
-                else {
-                        tmp += 365 * 24 * 60 * 60;
-                }
+        time_t current_year_seconds = year_seconds; // 1970 is not a leap year
+
+        while (time_left / current_year_seconds >= 1) {
+                time_left -= current_year_seconds;
                 year += 1;
 
-                rem = time_left - tmp;
-                if (rem < 365 * 24 * 60 * 60) {
-                        break;
+                if (is_leap(year)) {
+                        current_year_seconds = leap_year_seconds;
+                }
+                else {
+                        current_year_seconds = year_seconds;
                 }
         }
-        time_left = rem;
-
 
         int month = 1;
-        tmp = 0;
         for (int i = 0; i < 12; ++i) {
                 constexpr int month_days[12] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
                 int days = month_days[i];
                 if (i == 1 && is_leap(year)) {
                         days += 1;
                 }
-                tmp += days * 24 * 60 * 60;
+                const time_t current_month_seconds = days * day_seconds;
 
-                if (tmp < time_left) {
+                if (time_left / current_month_seconds >= 1) {
+                        time_left -= current_month_seconds;
                         month += 1;
                 }
                 else {
-                        tmp -= days * 24 * 60 * 60;
                         break;
                 }
         }
-        time_left -= tmp;
 
+        const int day = 1 + time_left / day_seconds;
+        time_left %= day_seconds;
 
-        int day = 1;
-        tmp = 0;
-        while (tmp <= time_left) {
-                tmp += 24 * 60 * 60;
-                day += 1;
-
-                rem = time_left - tmp;
-                if (rem < 24 * 60 * 60) {
-                        break;
-                }
-        }
-        time_left = rem;
-
-
-        const int hour = time_left / 3600;
-        time_left %= 3600;
+        const int hour = time_left / hour_seconds;
+        time_left %= hour_seconds;
 
         const int minute = time_left / 60;
         const int second = time_left % 60;
