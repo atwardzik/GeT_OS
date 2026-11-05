@@ -619,8 +619,13 @@ static ssize_t FAT16_write(struct File *file, void *buf, const size_t count, con
 
 update:
         //update parent (root) directory entries
-        inode->vfs_inode.i_size = file_offset + total_written_bytes;
-        dentry->file_size = file_offset + total_written_bytes;
+        const auto end_offset = file_offset + total_written_bytes;
+        inode->vfs_inode.i_size = end_offset > inode->vfs_inode.i_size
+                                          ? file_offset + total_written_bytes
+                                          : inode->vfs_inode.i_size;
+        dentry->file_size = end_offset > dentry->file_size
+                                    ? file_offset + total_written_bytes
+                                    : dentry->file_size;
         write_consecutive_sectors(parent,
                                   parent->absolute_first_sector, //fixme: only valid for rootdir!
                                   dentries.dentries,
@@ -678,6 +683,10 @@ static int FAT16_create_file(struct FAT16_Inode *parent, const struct Dentry *ne
 }
 
 static int invalidate_cluster_chain(struct FAT16_SuperBlock *sb, const uint16_t first_cluster) {
+        if (first_cluster == 0x0000) {
+                return 0;
+        }
+
         uint16_t cluster = first_cluster;
         uint16_t next_cluster;
         do {
