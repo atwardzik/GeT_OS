@@ -550,6 +550,40 @@ static struct Cursor visual_editor_get_move_page_up(const struct VisualEditor *e
         return cursor;
 }
 
+static struct Cursor visual_editor_handle_insert(const struct VisualEditor *editor, const char c) {
+        struct Cursor cursor = editor->cursor;
+
+        struct Line *line = &editor->lines[cursor.row - 1];
+        const size_t line_size = strlen(line->line) + 1;
+
+        if (line_size + 1 > line->linecap) {
+                char *line_str = realloc(line->line, line_size + 80);
+                if (!line_str) {
+                        return cursor;
+                }
+                line->line = line_str;
+                line->linecap += 80;
+        }
+
+        for (unsigned int i = line_size; i > cursor.col - 1; --i) {
+                line->line[i] = line->line[i - 1];
+        }
+        line->line[cursor.col - 1] = c;
+
+        if (c == '\b') {
+                printf("\x1b[D");
+                printf("\x1b[P"); //DCH
+                cursor.col -= 1;
+        }
+        else {
+                printf("\x1b[@"); //ICH
+                printf("%c", c);
+                cursor.col += 1;
+        }
+
+        return cursor;
+}
+
 typedef struct Cursor (*cursor_movement_fn)(const struct VisualEditor *);
 
 struct Movement {
@@ -615,29 +649,32 @@ int run_editor(int argc, char **argv) {
         char c;
         while (read(0, &c, 1) > 0) {
                 struct Cursor cursor_new = editor->cursor;
-                if (c == 'q') {
-                        return 0;
+
+                if (c == '\x1b') {
+                        //this will be quite complex... we have to handle normal ESC key and arrows here. Maybe sys_poll
+                        editor->current_mode = NORMAL;
+                        printf("\x1b[1 q");
                 }
-                else if (c == ':') {
+                else if (editor->current_mode == INSERT) {
+                        cursor_new = visual_editor_handle_insert(editor, c);
+                }
+                else if (c == 'q' && editor->current_mode == NORMAL) {
+                        break;
+                }
+                else if (c == ':' && editor->current_mode == NORMAL) {
                         printf("\x1b[40;1H");
                         printf(":");
                         cursor_new.row = 40;
                         cursor_new.col = 2;
                 }
-                else if (c == 'i') {
+                else if (c == 'i' && editor->current_mode == NORMAL) {
                         editor->current_mode = INSERT;
                         printf("\x1b[4 q");
                 }
-                else if (c == '\x1b') {
-                        //this will be quite complex...
-                        editor->current_mode = NORMAL;
-                        printf("\x1b[1 q");
-                }
-                else {
-                        //below are editor moves only
+                else if (editor->current_mode == NORMAL) {
                         for (int i = 0; i < sizeof(movements) / sizeof(movements[0]); ++i) {
                                 if (c == movements[i].letter) {
-                                        cursor_new = movements[i].fn(editor);
+                                        cursor_new = movements[i].fn(editor); break;
                                 }
                         }
                 }
@@ -664,5 +701,8 @@ int run_editor(int argc, char **argv) {
                                      editor->cursor.col + line_number_field_length);
         }
 
+        echo = true, canonical = true;
+        ioctl(0, TTY_ECHO, &echo);
+        ioctl(0, TTY_CANONICAL, &canonical);
         return 0;
 }

@@ -1,3 +1,5 @@
+add_subdirectory(userspaceVi)
+
 add_library(tests OBJECT
         tests.c
 )

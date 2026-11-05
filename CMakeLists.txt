@@ -38,7 +38,6 @@ add_subdirectory(src/kernel)
 add_subdirectory(src/fs)
 add_subdirectory(src/kstdlib)
 add_subdirectory(src/init)
-add_subdirectory(src/userspaceVi) # TEMPORARILY FOR DEVELOPMENT
 
 add_executable(os
         src/start.S
@@ -47,7 +46,6 @@ add_executable(os
         $<TARGET_OBJECTS:drivers>
         $<TARGET_OBJECTS:kernel>
         $<TARGET_OBJECTS:fs>
-        $<TARGET_OBJECTS:vi>
         $<TARGET_OBJECTS:klibc>
         $<TARGET_OBJECTS:init>
 )
@@ -56,6 +54,7 @@ if (DEFINED TESTS)
     add_subdirectory(tests)
     target_sources(os PRIVATE
             $<TARGET_OBJECTS:tests>
+            $<TARGET_OBJECTS:vi> # TEMPORARILY FOR DEVELOPMENT
     )
 endif ()
 

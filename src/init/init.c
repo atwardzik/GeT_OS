@@ -59,11 +59,6 @@ void PATER_ADAMVS(int argc, char *argv[]) {
         }
 
 
-        // char *params[] = {"vi", "/mnt/disk0/start.s", nullptr};
-        // [[maybe_unused]] const int vi_pid = spawnp((void (*)(void)) run_editor, nullptr, nullptr, params, nullptr);
-        // int code;
-        // const int returned_pid = wait(&code);
-
         while (1) {
                 printf("\x1b[96;49m[!] Running shell (gsh)\x1b[0m\n");
                 int fd = open("bin/gsh", O_BINARY, 0);
