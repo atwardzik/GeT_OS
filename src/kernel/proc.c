@@ -682,6 +682,9 @@ void sys_kill(const pid_t pid, int sig) {
                 struct File *file = process->files.fdtable[i];
 
                 if (file->f_owner == process->pid) { //FIXME: what about the children of the dead process?
+                        if (file->f_op->close) {
+                                file->f_op->close(file);
+                        }
                         kfree(file);
                 }
         }

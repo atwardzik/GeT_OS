@@ -412,7 +412,7 @@ static struct Dentry *FAT16_lookup(struct VFS_Inode *parent, struct Dentry *file
         return nullptr;
 }
 
-int FAT16_close(struct File *file) {
+static int FAT16_close(struct File *file) {
         if (file->f_inode != file->f_inode->i_sb->s_root->inode) {
                 kfree(file->f_inode);
         }
@@ -752,6 +752,8 @@ static int FAT16_delete_file(struct FAT16_Inode *parent, struct Dentry *file) {
         }
 
         kfree(dentries.dentries);
+        struct File file_wrapper = {.f_inode = file->inode};
+        FAT16_close(&file_wrapper);
         return rc;
 }
 

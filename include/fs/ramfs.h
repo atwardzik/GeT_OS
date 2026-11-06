@@ -30,6 +30,8 @@ int ramfs_create_file(struct VFS_Inode *parent, struct Dentry *new_file, uint16_
 
 int ramfs_unlink(struct VFS_Inode *parent, struct Dentry *file);
 
+int ramfs_close(struct File *file);
+
 ssize_t ramfs_write(struct File *file, void *buf, size_t count, off_t file_offset);
 
 ssize_t ramfs_read(struct File *file, void *buf, size_t count, off_t file_offset);

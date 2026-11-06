@@ -42,6 +42,7 @@ struct VFS_Inode *ramfs_alloc_inode(struct SuperBlock *sb) {
         i_fop->read = ramfs_read;
         i_fop->write = ramfs_write;
         i_fop->readdir = ramfs_readdir;
+        i_fop->close = ramfs_close;
 
 
         struct RAMFS_Inode *inode = kmalloc(sizeof(*inode));
@@ -139,9 +140,14 @@ int ramfs_unlink(struct VFS_Inode *parent, struct Dentry *file) {
         kfree(inode->vfs_inode.i_op);
         kfree(inode);
 
-        parent->i_size -= sizeof(struct DirectoryEntry); // TODO: should parent directory be sometimes shrunk?
+        parent->i_size -= sizeof(struct DirectoryEntry);
+        //fixme: parent directory should have separate function for managing directory entries, when they're freed empty places occur
 
         return 0;
+}
+
+int ramfs_close(struct File *file) {
+        // the inode stays in ram
 }
 
 ssize_t ramfs_write(struct File *file, void *buf, size_t count, off_t file_offset) {
@@ -193,19 +199,4 @@ ssize_t ramfs_readdir(struct VFS_Inode *inode, struct File *file, void *buf, siz
         memcpy(buf, inode_ptr->file_begin + file->f_pos, dentries_bytes);
 
         return dentries_bytes;
-}
-
-struct File *ramfs_get_file_handler(struct Dentry *file, unsigned int flags) {
-        struct FileOperations *std_fop = kmalloc(sizeof(*std_fop));
-        memset(std_fop, 0, sizeof(*std_fop));
-        std_fop->read = &ramfs_read;
-        std_fop->write = &ramfs_write;
-
-        struct File *f_std = kmalloc(sizeof(*f_std));
-        f_std->f_pos = 0;
-        f_std->f_op = std_fop;
-        f_std->f_owner = 0;
-        f_std->f_inode = file->inode;
-
-        return f_std;
 }
