@@ -11,8 +11,6 @@
 #include "signal.h"
 #include "tty.h"
 
-//TODO: processes should be better organized than a static array with fixed-position for give pid.
-
 #define STR_HELPER(x) #x
 #define STR(x) STR_HELPER(x)
 
@@ -183,6 +181,8 @@ int scheduler_init(void *current_main_kernel_stack) {
         scheduler.main_kernel_stack = current_main_kernel_stack;
         create_idle_process();
 
+        scheduler.current_process = &scheduler.processes[0];
+
         return 0;
 }
 
@@ -204,6 +204,51 @@ void **scheduler_get_current_process_stack(void) {
         return &scheduler.current_process->pstack;
 }
 
+static bool scheduler_can_populate_process(void) {
+        if (scheduler.processes_count <= scheduler.max_processes) {
+                return true;
+        }
+
+        return false;
+}
+
+static int scheduler_populate_process(const struct Process *process) {
+        if (!scheduler_can_populate_process()) {
+                return -ENOMEM;
+        }
+
+        for (int i = 0; i < scheduler.max_processes; ++i) {
+                if (memcmp(&scheduler.processes[i], &(struct Process){0}, sizeof(struct Process)) == 0) {
+                        scheduler.processes[i] = *process;
+                        break;
+                }
+        }
+
+        scheduler.processes_count += 1;
+        scheduler.total_allocated_memory += process->allocated_memory;
+        return 0;
+}
+
+static struct Process *scheduler_get_process_by_pid(const pid_t pid) {
+        for (int i = 0; i < scheduler.max_processes; ++i) {
+                if (scheduler.processes[i].pid == pid) {
+                        return &scheduler.processes[i];
+                }
+        }
+
+        return nullptr;
+}
+
+static int scheduler_evaporate_process(const pid_t pid) {
+        struct Process *process = scheduler_get_process_by_pid(pid);
+        if (process) {
+                *process = (struct Process){0};
+                scheduler.processes_count -= 1;
+                return 0;
+        }
+
+        return -1;
+}
 
 static struct Process *scheduler_get_next_process() {
         static size_t current_index = PID_INIT;
@@ -221,7 +266,7 @@ static struct Process *scheduler_get_next_process() {
                 current_index += 1;
                 max_depth_counter += 1;
                 if (current_index == scheduler.max_processes) {
-                        current_index = PID_INIT;
+                        current_index = 0;
                 }
                 if (max_depth_counter == 2 * scheduler.max_processes) {
                         return &scheduler.process_idle;
@@ -329,15 +374,18 @@ static size_t process_stack_init_argv(void *pstack, char *const argv[]) {
 
 static struct Process *create_blank_process(void (*process_entry_ptr)(void), void *static_base, char *const argv[]) {
         static pid_t pid = PID_INIT;
-
-        if (pid >= scheduler.max_processes) {
-                __asm__("bkpt   #0");
+        if (!scheduler_can_populate_process()) {
+                return nullptr;
         }
 
         void *process_page = kmalloc(DEFAULT_PROCESS_STACK_SIZE);
+        if (!process_page) {
+                return nullptr;
+        }
+
         void *kstack = process_page + DEFAULT_PROCESS_STACK_SIZE - sizeof(size_t);
         void *pstack_begin = process_page + DEFAULT_PROCESS_SP_OFFSET - sizeof(size_t);
-        size_t offset = process_stack_init_argv(pstack_begin, argv);
+        const size_t offset = process_stack_init_argv(pstack_begin, argv);
         void *pstack = pstack_begin - offset;
         create_process_stack_frame(&pstack,
                                    &exit,
@@ -377,13 +425,61 @@ static struct Process *create_blank_process(void (*process_entry_ptr)(void), voi
         };
         init_default_sighandlers(&process);
 
-        scheduler.total_allocated_memory += process.allocated_memory;
-        scheduler.processes[pid] = process;
-        scheduler.processes_count += 1;
+        if (scheduler_populate_process(&process) == 0) {
+                struct Process *added_process = scheduler_get_process_by_pid(pid);
+                pid += 1;
+                return added_process;
+        }
+        return nullptr;
+}
 
-        struct Process *added_process = &scheduler.processes[pid];
-        pid += 1;
-        return added_process;
+static pid_t fill_process_and_spawn(
+        struct Process *new_process,
+        const spawn_file_actions_t *file_actions,
+        const spawnattr_t *attrp,
+        char *const argv[], char *const envp[]
+) {
+        struct Process *current_process = scheduler.current_process;
+
+        struct File **fdtable = kmalloc(sizeof(struct File *) * MAX_OPEN_FILE_DESCRIPTORS);
+        if (!fdtable) {
+                kfree(new_process);
+                return -1;
+        }
+        struct Process **children = kmalloc(sizeof(struct Process *) * (current_process->max_children_count - 1));
+        if (!children) {
+                kfree(fdtable);
+                kfree(new_process);
+                return -1;
+        }
+
+
+        const struct Files files = {.count = current_process->files.count, .fdtable = fdtable};
+        for (size_t i = 0; i < MAX_OPEN_FILE_DESCRIPTORS; ++i) {
+                files.fdtable[i] = current_process->files.fdtable[i];
+        }
+        memset(children, 0, sizeof(struct Process *) * (current_process->max_children_count - 1));
+
+
+        new_process->files = files;
+        new_process->root = current_process->root;
+        new_process->pwd = current_process->pwd;
+        new_process->parent = current_process;
+        new_process->pgid = current_process->pgid;
+        new_process->max_children_count = current_process->max_children_count - 1;
+        new_process->children = children;
+
+        for (size_t i = 0; i < current_process->max_children_count; ++i) {
+                if (current_process->children[i] == nullptr) {
+                        current_process->children[i] = new_process;
+                        current_process->children_count += 1;
+
+                        break;
+                }
+        }
+
+        new_process->pstate = READY;
+        return new_process->pid;
 }
 
 pid_t sys_spawnp_process(
@@ -392,44 +488,12 @@ pid_t sys_spawnp_process(
         const spawnattr_t *attrp,
         char *const argv[], char *const envp[]
 ) {
-        if (!scheduler.processes[PID_INIT].stack_page_ptr) {
-                __asm__("bkpt   #0");
-        }
-
-        struct Process *current = scheduler.current_process;
-        struct File **fdtable = kmalloc(sizeof(struct File *) * MAX_OPEN_FILE_DESCRIPTORS);
-        struct Files files = {current->files.count, fdtable};
-        for (size_t i = 0; i < MAX_OPEN_FILE_DESCRIPTORS; ++i) {
-                files.fdtable[i] = current->files.fdtable[i];
-        }
-
-        struct Process *process = create_blank_process(process_entry_ptr, nullptr, argv);
-        if (!process->stack_page_ptr) {
+        struct Process *new_process = create_blank_process(process_entry_ptr, nullptr, argv);
+        if (!new_process) {
                 return -1;
         }
 
-        process->files = files;
-        process->root = current->root;
-        process->pwd = current->pwd;
-        process->parent = current;
-        process->pgid = current->pgid;
-        process->max_children_count = current->max_children_count - 1;
-        process->children = kmalloc(sizeof(struct Process *) * (current->max_children_count - 1));
-        for (size_t i = 0; i < process->max_children_count; ++i) {
-                process->children[i] = nullptr;
-        }
-
-        for (size_t i = 0; i < current->max_children_count; ++i) {
-                if (current->children[i] == nullptr) {
-                        current->children[i] = process;
-                        current->children_count += 1;
-
-                        break;
-                }
-        }
-
-        process->pstate = READY;
-        return process->pid;
+        return fill_process_and_spawn(new_process, file_actions, attrp, argv, envp);
 }
 
 pid_t sys_spawn_process(
@@ -439,61 +503,35 @@ pid_t sys_spawn_process(
         char *const argv[],
         char *const envp[]
 ) {
-        if (!scheduler.processes[PID_INIT].stack_page_ptr) {
-                __asm__("bkpt   #0");
-        }
-        struct Process *current = scheduler.current_process;
-
-        const size_t executable_size = current->files.fdtable[fd]->f_inode->i_size;
+        const struct Process *current_process = scheduler.current_process;
+        const size_t executable_size = current_process->files.fdtable[fd]->f_inode->i_size;
         char *executable_buffer = kmalloc(executable_size);
+        if (!executable_buffer) {
+                return -1;
+        }
+
         sys_read(fd, executable_buffer, executable_size);
+
         struct ProcessPage *ppage = load_exec(executable_buffer);
         kfree(executable_buffer);
-
         if (!ppage || !ppage->page_ptr) {
                 return -ENOEXEC;
         }
 
+
         void *_start_address = (uint8_t *) ppage->page_ptr + ppage->_start_offset;
 
-        struct Process *process = create_blank_process(_start_address, ppage->static_base, argv);
-        if (!process->stack_page_ptr) {
+        struct Process *new_process = create_blank_process(_start_address, ppage->static_base, argv);
+        if (!new_process) {
                 return -1;
         }
-        process->ppage = ppage;
+        new_process->ppage = ppage;
         if (ppage->static_base) {
-                process->allocated_memory += ppage->static_base_len;
+                new_process->allocated_memory += ppage->static_base_len;
         }
-        process->allocated_memory += ppage->page_size;
+        new_process->allocated_memory += ppage->page_size;
 
-
-        struct File **fdtable = kmalloc(sizeof(struct File *) * MAX_OPEN_FILE_DESCRIPTORS);
-        struct Files files = {current->files.count, fdtable};
-        for (size_t i = 0; i < MAX_OPEN_FILE_DESCRIPTORS; ++i) {
-                files.fdtable[i] = current->files.fdtable[i];
-        }
-        process->files = files;
-        process->root = current->root;
-        process->pwd = current->pwd;
-        process->parent = current;
-        process->pgid = current->pgid;
-        process->max_children_count = current->max_children_count - 1;
-        process->children = kmalloc(sizeof(struct Process *) * (current->max_children_count - 1));
-        for (size_t i = 0; i < process->max_children_count; ++i) {
-                process->children[i] = nullptr;
-        }
-
-        for (size_t i = 0; i < current->max_children_count; ++i) {
-                if (current->children[i] == nullptr) {
-                        current->children[i] = process;
-                        current->children_count += 1;
-
-                        break;
-                }
-        }
-
-        process->pstate = READY;
-        return process->pid;
+        return fill_process_and_spawn(new_process, file_actions, attrp, argv, envp);
 }
 
 static struct Files setup_init_stdio(struct VFS_Inode *root) {
@@ -548,26 +586,30 @@ static struct Files setup_init_stdio(struct VFS_Inode *root) {
 
 
 pid_t create_process_init(void (*process_entry_ptr)(void), struct VFS_Inode *root) {
-        if (scheduler.current_process || scheduler.processes[PID_INIT].stack_page_ptr) {
-                __asm__("bkpt   #0");
+        if (scheduler.processes_count) {
+                return -1;
         }
 
         char *argv[] = {"init", "test", nullptr};
-        struct Process *process = create_blank_process(process_entry_ptr, nullptr, argv);
-        if (!process->stack_page_ptr) {
-                __asm__("bkpt   #0");
+        struct Process *process_init = create_blank_process(process_entry_ptr, nullptr, argv);
+        if (!process_init) {
+                return -1;
         }
 
-        process->files = setup_init_stdio(root);
-        process->root = root;
-        process->pwd = root;
-        process->max_children_count = INITIAL_PROCESS_COUNT - 1;
-        process->children = kmalloc(sizeof(struct Process *) * (INITIAL_PROCESS_COUNT - 1));
-        for (size_t i = 0; i < process->max_children_count; ++i) {
-                process->children[i] = nullptr;
+        struct Process **children = kmalloc(sizeof(struct Process *) * (INITIAL_PROCESS_COUNT - 1));
+        if (!children) {
+                kfree(process_init);
+                return -1;
         }
+        memset(children, 0, sizeof(struct Process *) * (process_init->max_children_count - 1));
 
-        process->pstate = READY;
+        process_init->files = setup_init_stdio(root);
+        process_init->root = root;
+        process_init->pwd = root;
+        process_init->max_children_count = INITIAL_PROCESS_COUNT - 1;
+        process_init->children = children;
+
+        process_init->pstate = READY;
         return 0;
 }
 
@@ -629,8 +671,8 @@ void sys_exit(int status) {
 }
 
 void sys_kill(const pid_t pid, int sig) {
-        struct Process *process = &scheduler.processes[pid];
-        if (!process->stack_page_ptr) {
+        struct Process *process = scheduler_get_process_by_pid(pid);
+        if (!process) {
                 return;
         }
 
@@ -638,6 +680,7 @@ void sys_kill(const pid_t pid, int sig) {
                 signal_notify(process, SIGTERM);
                 return;
         }
+        // TODO: SEND OTHER SIGNALS
 
         signal_notify(process->parent, SIGCHLD);
         for (size_t i = 0; i < process->children_count; ++i) {
@@ -671,7 +714,7 @@ void sys_kill(const pid_t pid, int sig) {
         scheduler.total_allocated_memory -= process->allocated_memory;
         process->allocated_memory = 0;
 
-        scheduler.processes[pid].pstate = TERMINATED;
+        process->pstate = TERMINATED;
 }
 
 pid_t sys_wait(int *stat_loc) {
@@ -690,18 +733,17 @@ pid_t sys_wait(int *stat_loc) {
         current->pstate = RUNNING;
 
 
-        pid_t terminated_child = -1;
+        int terminated_child = -1;
         for (size_t i = 0; i < current->max_children_count; ++i) {
                 if (current->children[i] && current->children[i]->pstate == TERMINATED) {
                         terminated_child = i;
                 }
         }
         *stat_loc = current->children[terminated_child]->exit_code;
-        const pid_t dead_process = current->children[terminated_child]->pid;
 
         //evaporate zombie process
-        const struct Process p = {};
-        *current->children[terminated_child] = p;
+        const pid_t dead_process = current->children[terminated_child]->pid;
+        scheduler_evaporate_process(dead_process);
         current->children_count -= 1;
         current->children[terminated_child] = nullptr;
 
@@ -709,7 +751,7 @@ pid_t sys_wait(int *stat_loc) {
 }
 
 void run_process_init(void) {
-        scheduler.current_process = &scheduler.processes[PID_INIT];
+        scheduler.current_process = &scheduler.processes[0];
         scheduler.current_process->pstate = RUNNING;
         __asm__("movs   r0, #1\n\r"  // run init (pid=1)
                 "svc    #0xff\n\r"); // OS_INIT_SVC
