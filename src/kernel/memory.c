@@ -151,7 +151,7 @@ void *krealloc(void *ptr, size_t new_size) {
         new_size = align_size(new_size);
         struct Chunk *current = find_chunk_by_ptr(ptr);
         //TODO: extend existing block if there is free space between current and next
-        if (current->next_node == nullptr) {
+        if (current && current->next_node == nullptr) {
                 const size_t addend = new_size - current->size;
                 current->size += addend;
                 Allocator.allocated_size += addend;
@@ -163,8 +163,9 @@ void *krealloc(void *ptr, size_t new_size) {
                 return nullptr;
         }
 
-
-        memmove(new_ptr, ptr, current->size);
+        if (current) {
+                memmove(new_ptr, ptr, current->size);
+        }
 
         kfree(ptr);
         return new_ptr;

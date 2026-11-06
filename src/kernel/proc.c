@@ -39,56 +39,11 @@ static constexpr off_t IDLE_PROCESS_SP_OFFSET = 512;
 #define RECALL_KERNELSPACE_STATE RECALL_STATE_FROM(msp)
 
 
-struct owned_inode_queue_entry {
-        struct VFS_Inode *inode;
-
-        struct owned_inode_queue_entry *next;
+struct Pipe_Inode {
+        struct VFS_Inode inode;
+        void *ptr;
+        struct File file;
 };
-
-int add_to_owned_inodes(owned_inode_head_t *head, struct VFS_Inode *inode) {
-        if (!head) {
-                return -1;
-        }
-
-        struct owned_inode_queue_entry *new_entry = kmalloc(sizeof(*new_entry));
-        if (!new_entry) {
-                return -ENOMEM;
-        }
-        new_entry->inode = inode;
-        new_entry->next = nullptr;
-
-        if (!*head) {
-                *head = new_entry;
-                return 0;
-        }
-
-        struct owned_inode_queue_entry *entry = *head;
-        while (entry->next) {
-                entry = entry->next;
-        }
-
-        entry->next = new_entry;
-
-        return 0;
-}
-
-int deallocate_owned_inodes(owned_inode_head_t *head) {
-        if (!*head) {
-                return -1;
-        }
-
-        struct owned_inode_queue_entry *entry = *head;
-        struct owned_inode_queue_entry *next;
-        do {
-                next = entry->next;
-                kfree(entry->inode);
-                kfree(entry);
-
-                entry = next;
-        } while (next != nullptr);
-
-        return 0;
-}
 
 
 static struct {
@@ -146,6 +101,8 @@ static int create_idle_process() {
                 .max_children_count = 0,
                 .children_count = 0,
                 .children = nullptr,
+                .unnamed_pipes = nullptr,
+                .unnamed_pipes_count = 0,
 
                 .signal_mask = 0,
                 .pending_signals = nullptr,
@@ -613,6 +570,40 @@ pid_t create_process_init(void (*process_entry_ptr)(void), struct VFS_Inode *roo
         return 0;
 }
 
+static ssize_t pipe_read(struct File *file, void *buf, size_t count, off_t file_offset) {}
+
+static ssize_t pipe_write(struct File *file, void *buf, size_t count, off_t file_offset) {}
+
+int sys_pipe(int pipefd[2]) {
+        struct Process *current = scheduler.current_process;
+
+        current->unnamed_pipes_count += 1;
+        const size_t pipes_array_size = current->unnamed_pipes_count * sizeof(struct Pipe_Inode);
+
+        krealloc(current->unnamed_pipes, pipes_array_size);
+        if (!current->unnamed_pipes) {
+                return -ENOMEM;
+        }
+
+        const int pipe_index = current->unnamed_pipes_count - 1;
+        struct Pipe_Inode *pipe_inode = &current->unnamed_pipes[pipe_index];
+        memset(pipe_inode, 0, sizeof(*pipe_inode));
+
+        struct FileOperations *pipe_op = kmalloc(sizeof(*pipe_op));
+        if (!pipe_op) {
+                return -ENOMEM;
+        }
+        pipe_op->write = pipe_write;
+        pipe_op->read = pipe_read;
+        pipe_inode->inode.i_fop = pipe_op;
+
+        struct File file = {0};
+        file.f_op = pipe_op;
+        file.f_inode = (struct VFS_Inode *) pipe_inode;
+
+        current->unnamed_pipes[pipe_index].file = file;
+}
+
 pid_t sys_getpid(void) {
         const struct Process *current = scheduler.current_process;
 
@@ -706,10 +697,15 @@ void sys_kill(const pid_t pid, int sig) {
                         kfree(process->heap_pages[i]);
                 }
         }
+        if (process->unnamed_pipes) {
+                for (int i = 0; i < process->unnamed_pipes_count; ++i) {
+                        kfree(process->unnamed_pipes[i].ptr);
+                }
+                kfree(process->unnamed_pipes);
+        }
         kfree(process->files.fdtable);
         kfree(process->children);
         deallocate_signal_queue(&process->pending_signals);
-        deallocate_owned_inodes(&process->owned_inodes);
         kfree(process->stack_page_ptr);
         scheduler.total_allocated_memory -= process->allocated_memory;
         process->allocated_memory = 0;

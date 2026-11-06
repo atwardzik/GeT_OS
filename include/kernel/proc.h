@@ -37,11 +37,7 @@ struct signal_queue_entry;
 
 typedef struct signal_queue_entry *signal_queue_head_t;
 
-struct owned_inode_queue_entry;
-
-typedef struct owned_inode_queue_entry *owned_inode_head_t;
-
-int add_to_owned_inodes(owned_inode_head_t *head, struct VFS_Inode *inode);
+struct Pipe_Inode;
 
 // TODO: by using MPU forbid process to access system resources
 struct Process {
@@ -69,7 +65,6 @@ struct Process {
         struct Files files;
         struct VFS_Inode *root;
         struct VFS_Inode *pwd;
-        owned_inode_head_t owned_inodes;
 
         /* Parent and subprocesses */
 
@@ -77,6 +72,8 @@ struct Process {
         size_t max_children_count;
         size_t children_count;
         struct Process **children;
+        struct Pipe_Inode *unnamed_pipes;
+        int unnamed_pipes_count;
 
 
         /* Signals */
@@ -180,6 +177,8 @@ pid_t sys_wait(int *stat_loc);
  * @param status is an exit code that will be passed to the parent
  */
 [[noreturn]] void sys_exit(int status);
+
+int sys_pipe(int pipefd[2]);
 
 pid_t sys_getpid(void);
 

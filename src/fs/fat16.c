@@ -168,7 +168,8 @@ static ssize_t FAT16_read(struct File *file, void *buf, const size_t count, cons
 
 static struct FAT16_DirectoryEntries FAT16_get_all_dentries(const struct FAT16_Inode *inode) {
         struct FAT16_DirectoryEntries dentries = {0};
-        if (inode == (struct FAT16_Inode *) inode->vfs_inode.i_sb->s_root->inode) {
+        if (inode->absolute_first_sector ==
+            ((struct FAT16_Inode *) inode->vfs_inode.i_sb->s_root->inode)->absolute_first_sector) {
                 dentries = FAT16_get_all_rootdir_dentries(inode);
         }
         else {
@@ -374,6 +375,11 @@ static ssize_t FAT16_read(struct File *file, void *buf, const size_t count, cons
 static struct Dentry *FAT16_lookup(struct VFS_Inode *parent, struct Dentry *file, unsigned int) {
         const struct FAT16_Inode *inode = (struct FAT16_Inode *) parent;
 
+        if (strcmp(file->name, ".") == 0) {
+                file->inode = parent;
+                return file;
+        }
+
         const struct FAT16_DirectoryEntries dentries = FAT16_get_all_dentries(inode);
         if (dentries.count == 0) {
                 kfree(dentries.dentries);
@@ -393,9 +399,6 @@ static struct Dentry *FAT16_lookup(struct VFS_Inode *parent, struct Dentry *file
                         found->parent_dentry_index = i;
                         //todo: creation, access and modification time
 
-                        struct Process *current_process = scheduler_get_current_process();
-                        add_to_owned_inodes(&current_process->owned_inodes, (struct VFS_Inode *) found);
-
                         file->inode = (struct VFS_Inode *) found;
                         kfree(dentries.dentries);
                         return file;
@@ -407,6 +410,12 @@ static struct Dentry *FAT16_lookup(struct VFS_Inode *parent, struct Dentry *file
 
         kfree(dentries.dentries);
         return nullptr;
+}
+
+int FAT16_close(struct File *file) {
+        if (file->f_inode != file->f_inode->i_sb->s_root->inode) {
+                kfree(file->f_inode);
+        }
 }
 
 static ssize_t FAT16_readdir(struct VFS_Inode *inode, struct File *file, void *buf, const size_t count) {
@@ -582,7 +591,7 @@ static ssize_t FAT16_write(struct File *file, void *buf, const size_t count, con
         int rc = 0;
         ssize_t total_written_bytes = 0;
 
-        if (inode == rootdir) {
+        if (inode->absolute_first_sector == rootdir->absolute_first_sector) {
                 return write_consecutive_sectors(inode, inode->absolute_first_sector, buf, count, file_offset);
         }
 
@@ -705,7 +714,7 @@ static int FAT16_delete_file(struct FAT16_Inode *parent, struct Dentry *file) {
 
         int rc = -ENOENT;
 
-        if (inode == rootdir) {
+        if (inode->absolute_first_sector == rootdir->absolute_first_sector) {
                 return -EINVAL;
         }
 
@@ -773,6 +782,7 @@ struct Dentry *FAT16_mount(
         i_fop->read = FAT16_read;
         i_fop->write = FAT16_write;
         i_fop->readdir = FAT16_readdir;
+        i_fop->close = FAT16_close;
 
         //filesystem structure
         struct FAT16_SuperBlockOperations *sb_op = kmalloc(sizeof(*sb_op));

@@ -214,12 +214,9 @@ int sys_close(int file) {
         struct Process *current_process = scheduler_get_current_process();
 
         struct File *current_file = current_process->files.fdtable[file];
-        // FIXME: should it be like that?
-        if (current_file->f_inode) { //is allocatable?
-                kfree(current_file);
-        }
-        else {
+        if (current_file->f_op->close && current_file->f_owner == current_process->pid) {
                 current_file->f_op->close(current_file);
+                kfree(current_process->files.fdtable[file]);
         }
         current_process->files.fdtable[file] = nullptr;
 

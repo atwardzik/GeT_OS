@@ -32,11 +32,13 @@ struct Dentry *ramfs_mount(
 
 struct VFS_Inode *ramfs_alloc_inode(struct SuperBlock *sb) {
         struct InodeOperations *i_op = kmalloc(sizeof(*i_op));
+        memset(i_op, 0, sizeof(*i_op));
         i_op->lookup = &ramfs_lookup;
         i_op->create = &ramfs_create_file;
         i_op->unlink = &ramfs_unlink;
 
         struct FileOperations *i_fop = kmalloc(sizeof(*i_fop));
+        memset(i_fop, 0, sizeof(*i_fop));
         i_fop->read = ramfs_read;
         i_fop->write = ramfs_write;
         i_fop->readdir = ramfs_readdir;
