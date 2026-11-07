@@ -20,6 +20,18 @@
         }                                                                       \
 }
 
+#define ASSERT_EQ_MSG(x, y, msg, err_fmt, err_value) {                          \
+        puts(msg);                                                              \
+        if (x == y) {                                                           \
+                printf("\x1b[92;49mOk\x1b[0m.\n");                              \
+        }                                                                       \
+        else {                                                                  \
+                printf("\x1b[91;49mFail\x1b[0m.\n\t");                          \
+                printf(err_fmt, err_value);                                     \
+                puts("\n");                                                     \
+        }                                                                       \
+}
+
 void run_kernelspace_tests(void);
 
 void run_userspace_tests(void);

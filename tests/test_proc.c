@@ -3,6 +3,7 @@
 //
 
 #include "tests.h"
+#include "drivers/time.h"
 
 static int proc(int argc, char *argv[]) {
         if (argc == 2) {
@@ -42,6 +43,67 @@ void test_proc_exec_return(void) {
         wait(&code);
 
         ASSERT_EQ(code, 20);
+}
+
+static int proc_pipe_read(int argc, char *argv[]) {
+        if (argc < 2) {
+                dprintf(2, "No parameters supplied");
+                return -1;
+        }
+
+        const int fd = strtoul(argv[1], nullptr, 10);
+        uint32_t magic_number = 0;
+        const int read_bytes = read(fd, &magic_number, sizeof(magic_number));
+
+        if (read_bytes == sizeof(magic_number) && magic_number == 0xdeadbeef) {
+                return 0;
+        }
+
+        return -1;
+}
+
+static int proc_pipe_write(void) {
+        int pipefd[2];
+
+        if (pipe(pipefd) != 0) {
+                return -1;
+        }
+
+        char *fd0 = malloc(16);
+        if (!fd0) {
+                return -1;
+        }
+        itoa(pipefd[0], fd0, 10);
+
+        char *argv[] = {"proc_pipe_read", fd0, nullptr};
+        const pid_t pid = spawnp((void (*)(void)) proc_pipe_read, nullptr, nullptr, argv, nullptr);
+        if (pid <= 0) {
+                free(fd0);
+                return -1;
+        }
+
+        delay_ms(5);
+        const uint32_t magic_number = 0xdeadbeef;
+        write(pipefd[1], &magic_number, sizeof(magic_number));
+
+        int rc;
+        wait(&rc);
+
+        free(fd0);
+        close(pipefd[0]);
+        close(pipefd[1]);
+
+        return rc;
+}
+
+void test_proc_pipe(void) {
+        char *argv[] = {"proc_pipe_write", nullptr};
+        pid_t pid = spawnp((void (*)(void)) proc_pipe_write, nullptr, nullptr, argv, nullptr);
+
+        int rc;
+        wait(&rc);
+
+        ASSERT_EQ(rc, 0);
 }
 
 const char elf_exec[1644] = {

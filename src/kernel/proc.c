@@ -583,7 +583,6 @@ static ssize_t pipe_read(struct File *file, void *buf, size_t count, off_t file_
         }
 
         const size_t to_read = file_offset + count <= pipe->inode.i_size ? count : pipe->inode.i_size;
-        // todo: wait event interruptible
         memcpy(buf, pipe->ptr + file_offset, to_read);
 
         return to_read;

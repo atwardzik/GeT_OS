@@ -25,6 +25,10 @@ static struct {
         void *heap_start;
 } Allocator __attribute__ ((section (".data"))) = {nullptr, 0, 0, heap_start_ptr};
 
+#ifdef TESTS
+size_t *allocator_allocated_size = &Allocator.allocated_size;
+#endif
+
 static size_t align_size(const size_t size) {
         // size_t proposed_size = 1;
         // while (proposed_size < size) {

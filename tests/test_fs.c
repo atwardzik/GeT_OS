@@ -127,7 +127,7 @@ void test_FAT16_create_file(void) {
         close(dirfd);
 }
 
-void test_FAT16_write_fle(void) {
+void test_FAT16_write_file(void) {
         const int fd = open("/mnt/disk0/crdel.txt", O_RDWR, 0);
         if (fd < 0) {
                 FAIL;
