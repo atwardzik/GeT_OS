@@ -176,6 +176,8 @@ sighandler_t signal(int signum, sighandler_t handler);
 
 pid_t wait(int *stat_loc);
 
+int pipe(int pipefd[2]);
+
 
 /*
  * string

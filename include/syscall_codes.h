@@ -20,6 +20,7 @@
 #define FSTAT_SVC       12
 #define GETCWD_SVC      13
 #define UNLINK_SVC      14
+#define PIPE_SVC        15
 
 #define GET_PID_SVC     20
 #define GET_PPID_SVC    21

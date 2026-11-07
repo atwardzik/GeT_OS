@@ -51,6 +51,10 @@ pid_t wait(int *stat_loc) {
         SYSCALL_RETURN(int, WAIT_SVC)
 }
 
+int pipe(int pipefd[2]) {
+        SYSCALL_RETURN(int, PIPE_SVC)
+}
+
 
 /*
  * file syscalls
