@@ -106,6 +106,121 @@ void test_proc_pipe(void) {
         ASSERT_EQ(rc, 0);
 }
 
+static int proc_pipe_computation(int argc, char *argv[]) {
+        if (argc < 3) {
+                dprintf(2, "Not enough parameters supplied.");
+                return -1;
+        }
+
+        const int fd_read = strtoul(argv[1], nullptr, 10);
+        uint32_t lower_bound = 0, upper_bound = 0;
+        const int read_bytes1 = read(fd_read, &lower_bound, sizeof(lower_bound));
+        const int read_bytes2 = read(fd_read, &upper_bound, sizeof(lower_bound));
+
+        const int fd_write = strtoul(argv[2], nullptr, 10);
+
+        if (read_bytes1 != sizeof(lower_bound) || read_bytes2 != sizeof(upper_bound)) {
+                return -1;
+        }
+
+        uint64_t n = 0;
+        for (int i = lower_bound; i <= upper_bound; ++i) {
+                n += i * i + 1;
+        }
+
+        write(fd_write, &n, sizeof(n));
+        return 0;
+}
+
+static int proc_multi_pipe(void) {
+        int pipefd0[2];
+        int pipefd1[2];
+        int pipefd2[2];
+        int pipefd3[2];
+
+        if (pipe(pipefd0) != 0 || pipe(pipefd1) != 0 || pipe(pipefd2) != 0 || pipe(pipefd3) != 0) {
+                return -1;
+        }
+
+        char *fds = malloc(32);
+        if (!fds) {
+                return -1;
+        }
+        memset(fds, 0, 32);
+        itoa(pipefd0[0], fds, 10);
+        itoa(pipefd0[1], fds + 4, 10);
+        itoa(pipefd1[0], fds + 8, 10);
+        itoa(pipefd1[1], fds + 12, 10);
+        itoa(pipefd2[0], fds + 16, 10);
+        itoa(pipefd2[1], fds + 20, 10);
+        itoa(pipefd3[0], fds + 24, 10);
+        itoa(pipefd3[1], fds + 28, 10);
+
+        char *argv0[] = {"proc_pipe_computation", fds, fds + 4, nullptr};
+        char *argv1[] = {"proc_pipe_computation", fds + 8, fds + 12, nullptr};
+        char *argv2[] = {"proc_pipe_computation", fds + 16, fds + 20, nullptr};
+        char *argv3[] = {"proc_pipe_computation", fds + 24, fds + 28, nullptr};
+        const pid_t pid0 = spawnp((void (*)(void)) proc_pipe_computation, nullptr, nullptr, argv0, nullptr);
+        const pid_t pid1 = spawnp((void (*)(void)) proc_pipe_computation, nullptr, nullptr, argv1, nullptr);
+        const pid_t pid2 = spawnp((void (*)(void)) proc_pipe_computation, nullptr, nullptr, argv2, nullptr);
+        const pid_t pid3 = spawnp((void (*)(void)) proc_pipe_computation, nullptr, nullptr, argv3, nullptr);
+        if (pid0 <= 0 || pid1 <= 0 || pid2 <= 0 || pid3 <= 0) {
+                free(fds);
+                return -1;
+        }
+
+        delay_ms(5);
+
+        const uint32_t bounds0[2] = {0, 5000};
+        const uint32_t bounds1[2] = {5001, 10000};
+        const uint32_t bounds2[2] = {10001, 15000};
+        const uint32_t bounds3[2] = {15001, 20000};
+        write(pipefd0[1], &bounds0[0], sizeof(uint32_t));
+        write(pipefd0[1], &bounds0[1], sizeof(uint32_t));
+        write(pipefd1[1], &bounds1[0], sizeof(uint32_t));
+        write(pipefd1[1], &bounds1[1], sizeof(uint32_t));
+        write(pipefd2[1], &bounds2[0], sizeof(uint32_t));
+        write(pipefd2[1], &bounds2[1], sizeof(uint32_t));
+        write(pipefd3[1], &bounds3[0], sizeof(uint32_t));
+        write(pipefd3[1], &bounds3[1], sizeof(uint32_t));
+
+        wait(nullptr);
+        wait(nullptr);
+        wait(nullptr);
+        wait(nullptr);
+
+        uint64_t results[4] = {};
+        read(pipefd0[0], &results[0], sizeof(uint64_t));
+        read(pipefd1[0], &results[1], sizeof(uint64_t));
+        read(pipefd2[0], &results[2], sizeof(uint64_t));
+        read(pipefd3[0], &results[3], sizeof(uint64_t));
+
+        const uint64_t sum = results[0] + results[1] + results[2] + results[3];
+        const int rc = sum == 2666866690001 ? 0 : -1;
+
+        free(fds);
+        close(pipefd0[0]);
+        close(pipefd0[1]);
+        close(pipefd1[0]);
+        close(pipefd1[1]);
+        close(pipefd2[0]);
+        close(pipefd2[1]);
+        close(pipefd3[0]);
+        close(pipefd3[1]);
+
+        return rc;
+}
+
+void test_proc_multi_pipe(void) {
+        char *argv[] = {"proc_multi_pipe", nullptr};
+        pid_t pid = spawnp((void (*)(void)) proc_multi_pipe, nullptr, nullptr, argv, nullptr);
+
+        int rc;
+        wait(&rc);
+
+        ASSERT_EQ(rc, 0);
+}
+
 const char elf_exec[1644] = {
         0x7f, 0x45, 0x4c, 0x46, 0x01, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x00,
         0x28, 0x00, 0x01, 0x00, 0x00, 0x00, 0x11, 0x01, 0x00, 0x00, 0x34, 0x00, 0x00, 0x00, 0x3c, 0x04, 0x00, 0x00,

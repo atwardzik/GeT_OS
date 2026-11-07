@@ -42,6 +42,7 @@ void run_userspace_tests(void) {
         test_proc_exec_return();
         test_simple_elf_exec();
         test_proc_pipe();
+        test_proc_multi_pipe();
         ASSERT_EQ_MSG(allocated_bytes, *allocator_allocated_size, "[PROC ALLOC] Check for memleaks: ",
                       "%i [B] leaked.", *allocator_allocated_size - allocated_bytes);
 
