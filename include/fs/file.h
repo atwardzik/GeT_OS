@@ -35,7 +35,7 @@
 #define O_DIRECTORY 0x200000
 
 
-constexpr int MAX_OPEN_FILE_DESCRIPTORS = 8;
+constexpr int MAX_OPEN_FILE_DESCRIPTORS = 16;
 
 struct SuperBlock;
 

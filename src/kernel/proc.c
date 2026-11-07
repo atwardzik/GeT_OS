@@ -44,8 +44,10 @@ struct Pipe_Inode {
         void *ptr;
         struct File file;
 
-        size_t read_offset;
-        size_t write_offset;
+        int read_offset;
+        int write_offset;
+
+        struct Process *wait_for_read;
 };
 
 
@@ -104,8 +106,6 @@ static int create_idle_process() {
                 .max_children_count = 0,
                 .children_count = 0,
                 .children = nullptr,
-                .unnamed_pipes = nullptr,
-                .unnamed_pipes_count = 0,
 
                 .signal_mask = 0,
                 .pending_signals = nullptr,
@@ -573,17 +573,47 @@ pid_t create_process_init(void (*process_entry_ptr)(void), struct VFS_Inode *roo
         return 0;
 }
 
-static ssize_t pipe_read(struct File *file, void *buf, size_t count, off_t file_offset) {
-        const struct Pipe_Inode *pipe = (struct Pipe_Inode *) file->f_inode;
+bool has_free_fd(struct Process *process) {
+        if (process->files.count >= MAX_OPEN_FILE_DESCRIPTORS) {
+                return false;
+        }
 
-        while (pipe->write_offset <= pipe->read_offset) {
+        return true;
+}
+
+int populate_file(struct Process *process, struct File *file) {
+        for (size_t i = 0; i < MAX_OPEN_FILE_DESCRIPTORS; ++i) {
+                if (process->files.fdtable[i] == nullptr) {
+                        process->files.fdtable[i] = file;
+                        process->files.count += 1;
+
+                        return i;
+                }
+        }
+
+        return -1;
+}
+
+static ssize_t pipe_read(struct File *file, void *buf, size_t count, off_t file_offset) {
+        struct Pipe_Inode *pipe = (struct Pipe_Inode *) file->f_inode;
+
+        while (pipe->write_offset <= pipe->read_offset || pipe->wait_for_read) {
                 struct Process *process = scheduler_get_current_process();
-                process->pstate = READY; //TODO: change this state only on write
+                process->pstate = WAITING_FOR_RESOURCE;
+                if (!pipe->wait_for_read) {
+                        pipe->wait_for_read = process;
+                }
+
+                // fixme: add waiting queue
+                // due to some reasons unbeknown to me, after this function call
+                // and after waking up (when the process is READY) the condition passes
+                // and the instruction after loop is executed
                 save_kernelmode_and_context_switch();
         }
 
         const size_t to_read = file_offset + count <= pipe->inode.i_size ? count : pipe->inode.i_size;
         memcpy(buf, pipe->ptr + file_offset, to_read);
+        pipe->read_offset = file_offset + count;
 
         return to_read;
 }
@@ -603,19 +633,22 @@ static ssize_t pipe_write(struct File *file, void *buf, size_t count, off_t file
         memcpy(pipe->ptr + file_offset, buf, count);
         pipe->write_offset = file_offset + count;
 
+        if (pipe->wait_for_read) {
+                pipe->wait_for_read->pstate = READY;
+                pipe->wait_for_read = nullptr;
+        }
+
         return count;
 }
 
 static int pipe_close(struct File *file) {
-        //file descriptors are closed in VFS level; the pipe is deallocated on process exit
-}
-
-static int close_all_pipes(struct Process *process) {
-        for (int i = 0; i < process->unnamed_pipes_count; ++i) {
-                kfree(process->unnamed_pipes[i].ptr);
-                process->unnamed_pipes[i].ptr = nullptr;
-                kfree(process->unnamed_pipes[i].file.f_op);
-                process->unnamed_pipes[i].file.f_op = nullptr;
+        const struct Process *current = scheduler.current_process;
+        if (file->f_inode && file->f_owner == current->pid) { //FIXME: what about children of the dead process?
+                struct Pipe_Inode *pipe_inode = (struct Pipe_Inode *) file->f_inode;
+                kfree(pipe_inode->inode.i_fop);
+                kfree(pipe_inode->ptr);
+                kfree(pipe_inode);
+                pipe_inode = nullptr;
         }
 }
 
@@ -626,17 +659,11 @@ int sys_pipe(int pipefd[2]) {
                 return -EMFILE;
         }
 
-        current->unnamed_pipes_count += 1;
-        const size_t pipes_array_size = current->unnamed_pipes_count * sizeof(struct Pipe_Inode);
 
-        void *ptr = krealloc(current->unnamed_pipes, pipes_array_size);
-        if (!ptr) {
+        struct Pipe_Inode *pipe_inode = kmalloc(sizeof(*pipe_inode));
+        if (!pipe_inode) {
                 return -ENOMEM;
         }
-        current->unnamed_pipes = ptr;
-
-        const int pipe_index = current->unnamed_pipes_count - 1;
-        struct Pipe_Inode *pipe_inode = &current->unnamed_pipes[pipe_index];
         memset(pipe_inode, 0, sizeof(*pipe_inode));
 
         struct FileOperations *pipe_op = kmalloc(sizeof(*pipe_op));
@@ -654,7 +681,7 @@ int sys_pipe(int pipefd[2]) {
         file.f_inode = (struct VFS_Inode *) pipe_inode;
         file.f_owner = current->pid;
 
-        current->unnamed_pipes[pipe_index].file = file;
+        pipe_inode->file = file;
 
 
         struct File *file_read = kmalloc(sizeof(*file_read));
@@ -669,25 +696,8 @@ int sys_pipe(int pipefd[2]) {
         }
         *file_write = file;
 
-        int fd_read = 0, fd_write = 0;
-        for (size_t i = 3; i < MAX_OPEN_FILE_DESCRIPTORS; ++i) {
-                if (current->files.fdtable[i] == nullptr) {
-                        current->files.fdtable[i] = file_read;
-                        current->files.count += 1;
-
-                        fd_read = i;
-                        break;
-                }
-        }
-        for (size_t i = 3; i < MAX_OPEN_FILE_DESCRIPTORS; ++i) {
-                if (current->files.fdtable[i] == nullptr) {
-                        current->files.fdtable[i] = file_write;
-                        current->files.count += 1;
-
-                        fd_write = i;
-                        break;
-                }
-        }
+        const int fd_read = populate_file(current, file_read);
+        const int fd_write = populate_file(current, file_write);
 
         pipefd[0] = fd_read;
         pipefd[1] = fd_write;
@@ -769,10 +779,10 @@ void sys_kill(const pid_t pid, int sig) {
                 signal_notify(process->children[i], SIGHUP);
         }
 
-        for (size_t i = 0; i < process->files.count; ++i) {
+        for (size_t i = 0; i < MAX_OPEN_FILE_DESCRIPTORS; ++i) {
                 struct File *file = process->files.fdtable[i];
 
-                if (file->f_owner == process->pid) { //FIXME: what about the children of the dead process?
+                if (file && file->f_owner == process->pid) { //FIXME: what about the children of the dead process?
                         if (file->f_op->close) {
                                 file->f_op->close(file);
                         }
@@ -790,10 +800,6 @@ void sys_kill(const pid_t pid, int sig) {
                         // Technically, having to free those pointers means userspace memleak
                         kfree(process->heap_pages[i]);
                 }
-        }
-        if (process->unnamed_pipes) {
-                close_all_pipes(process);
-                kfree(process->unnamed_pipes);
         }
         kfree(process->files.fdtable);
         kfree(process->children);

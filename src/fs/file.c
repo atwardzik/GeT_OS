@@ -100,38 +100,29 @@ static struct VFS_Inode *create_file(struct VFS_Inode *parent, const char *name,
         return file.inode;
 }
 
-static int get_file_descriptor(struct VFS_Inode *inode, int flags) {
+static int create_file_descriptor(struct VFS_Inode *inode, int flags) {
         struct Process *current_process = scheduler_get_current_process();
-        if (current_process->files.count >= MAX_OPEN_FILE_DESCRIPTORS) {
-                printk("[!] Too much files opened.\n");
-                __asm__("bkpt   #0");
-                return -1;
-        }
 
-        for (size_t i = 3; i < MAX_OPEN_FILE_DESCRIPTORS; ++i) { //first three file descriptors are untouched (stdio)
+        //does the file already exist?
+        for (size_t i = 0; i < MAX_OPEN_FILE_DESCRIPTORS; ++i) {
                 const struct File *file = current_process->files.fdtable[i];
                 if (file && file->f_inode == inode) {
                         return i;
                 }
         }
 
-        struct File *found_file = kmalloc(sizeof(*found_file));
-        found_file->f_op = inode->i_fop;
-        found_file->f_inode = inode;
-        found_file->f_pos = 0;
-        found_file->f_owner = current_process->pid;
-        found_file->f_flags = flags;
-
-        for (size_t i = 0; i < MAX_OPEN_FILE_DESCRIPTORS; ++i) {
-                if (current_process->files.fdtable[i] == nullptr) {
-                        current_process->files.fdtable[i] = found_file;
-                        current_process->files.count += 1;
-
-                        return i;
-                }
+        if (!has_free_fd(current_process)) {
+                return -EMFILE;
         }
 
-        return -1;
+        struct File *file = kmalloc(sizeof(*file));
+        file->f_op = inode->i_fop;
+        file->f_inode = inode;
+        file->f_pos = 0;
+        file->f_owner = current_process->pid;
+        file->f_flags = flags;
+
+        return populate_file(current_process, file);
 }
 
 static char *get_file_path(const char *name) {
@@ -187,7 +178,7 @@ int sys_open(const char *name, int flags, int mode) {
                 return -1;
         }
         if (file) {
-                const int fd = get_file_descriptor(file, flags);
+                const int fd = create_file_descriptor(file, flags);
 
                 if (fd < 0) {
                         return fd;
@@ -214,7 +205,7 @@ int sys_close(int file) {
         struct Process *current_process = scheduler_get_current_process();
 
         struct File *current_file = current_process->files.fdtable[file];
-        if (current_file->f_op->close && current_file->f_owner == current_process->pid) {
+        if (current_file && current_file->f_op->close && current_file->f_owner == current_process->pid) {
                 current_file->f_op->close(current_file);
                 kfree(current_process->files.fdtable[file]);
         }

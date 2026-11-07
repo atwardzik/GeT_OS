@@ -72,11 +72,9 @@ struct Process {
         size_t max_children_count;
         size_t children_count;
         struct Process **children;
-        struct Pipe_Inode *unnamed_pipes;
-        int unnamed_pipes_count;
-
 
         /* Signals */
+
         uint32_t signal_mask;
         signal_queue_head_t pending_signals;
         bool signal_handled;
@@ -158,6 +156,10 @@ pid_t sys_spawn_process(
 );
 
 // int sys_execve(const char *path, char *const argv[], char *const envp[]);
+
+bool has_free_fd(struct Process *process);
+
+int populate_file(struct Process *process, struct File *file);
 
 /**
  * Suspends execution of current process until stat_loc information is available for a terminated child process,
