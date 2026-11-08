@@ -416,6 +416,8 @@ static int FAT16_close(struct File *file) {
         if (file->f_inode != file->f_inode->i_sb->s_root->inode) {
                 kfree(file->f_inode);
         }
+
+        kfree(file);
 }
 
 static ssize_t FAT16_readdir(struct VFS_Inode *inode, struct File *file, void *buf, const size_t count) {

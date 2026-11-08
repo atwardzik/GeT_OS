@@ -206,11 +206,14 @@ int sys_close(int file) {
 
         struct File *current_file = current_process->files.fdtable[file];
         if (current_file && current_file->f_op->close && current_file->f_owner == current_process->pid) {
+                // While the VFS creates file descriptors for files
+                // it is a job of a specific FS to free this (struct File)
+                // provided that it does not need it.
+                // This is true because sys_close is generic and some DEVICES
+                // may need the File
                 current_file->f_op->close(current_file);
-                kfree(current_process->files.fdtable[file]);
         }
         current_process->files.fdtable[file] = nullptr;
-
         current_process->files.count -= 1;
 
         return 0;
@@ -245,7 +248,7 @@ int sys_unlink(const char *name) {
 int sys_read(int file, char *ptr, int len) {
         struct Process const *current_process = scheduler_get_current_process();
 
-        if (file >= current_process->files.count || file < 0 || current_process->files.fdtable[file] == nullptr) {
+        if (file >= MAX_OPEN_FILE_DESCRIPTORS || file < 0 || current_process->files.fdtable[file] == nullptr) {
                 printk("[!] There is no such file descriptor\n");
                 __asm__("bkpt   #0");
                 return -EBADF;
@@ -275,7 +278,7 @@ int sys_read(int file, char *ptr, int len) {
 int sys_write(const int file, char *ptr, const int len) {
         struct Process const *current_process = scheduler_get_current_process();
 
-        if (file >= current_process->files.count || file < 0 || current_process->files.fdtable[file] == nullptr) {
+        if (file >= MAX_OPEN_FILE_DESCRIPTORS || file < 0 || current_process->files.fdtable[file] == nullptr) {
                 printk("[!] There is no such file descriptor\n");
                 __asm__("bkpt   #0");
                 return -EBADF;
@@ -297,7 +300,7 @@ int sys_write(const int file, char *ptr, const int len) {
 int sys_ioctl(int file, unsigned long request, void *arg) {
         struct Process const *current_process = scheduler_get_current_process();
 
-        if (file >= current_process->files.count || file < 0 || current_process->files.fdtable[file] == nullptr) {
+        if (file >= MAX_OPEN_FILE_DESCRIPTORS || file < 0 || current_process->files.fdtable[file] == nullptr) {
                 printk("[!] There is no such file descriptor\n");
                 __asm__("bkpt   #0");
                 return -1;
@@ -314,7 +317,7 @@ int sys_ioctl(int file, unsigned long request, void *arg) {
 int sys_lseek(const int file, off_t offset, int whence) {
         struct Process const *current_process = scheduler_get_current_process();
 
-        if (file >= current_process->files.count || file < 0 || current_process->files.fdtable[file] == nullptr) {
+        if (file >= MAX_OPEN_FILE_DESCRIPTORS || file < 0 || current_process->files.fdtable[file] == nullptr) {
                 printk("[!] There is no such file descriptor\n");
                 __asm__("bkpt   #0");
                 return -1;
@@ -340,7 +343,7 @@ int sys_lseek(const int file, off_t offset, int whence) {
 int sys_readdir(int dirfd, void *buf, int size) {
         const struct Process *current_process = scheduler_get_current_process();
 
-        if (dirfd >= current_process->files.count || dirfd < 0 || current_process->files.fdtable[dirfd] == nullptr) {
+        if (dirfd >= MAX_OPEN_FILE_DESCRIPTORS || dirfd < 0 || current_process->files.fdtable[dirfd] == nullptr) {
                 printk("[!] There is no such file descriptor\n");
                 return -1;
         }
@@ -373,7 +376,7 @@ int sys_chdir(const char *path) {
 int sys_fstat(int fd, struct stat *st) {
         struct Process *current_process = scheduler_get_current_process();
 
-        if (fd >= current_process->files.count || fd < 0 || current_process->files.fdtable[fd] == nullptr) {
+        if (fd >= MAX_OPEN_FILE_DESCRIPTORS || fd < 0 || current_process->files.fdtable[fd] == nullptr) {
                 printk("[!] There is no such file descriptor\n");
                 return -1;
         }

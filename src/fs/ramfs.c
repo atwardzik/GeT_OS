@@ -148,19 +148,20 @@ int ramfs_unlink(struct VFS_Inode *parent, struct Dentry *file) {
 
 int ramfs_close(struct File *file) {
         // the inode stays in ram
+        kfree(file);
 }
 
 ssize_t ramfs_write(struct File *file, void *buf, size_t count, off_t file_offset) {
         struct RAMFS_Inode *inode_ptr = (struct RAMFS_Inode *) file->f_inode;
 
         if (!inode_ptr->bytes_allocated) {
-                inode_ptr->file_begin = kmalloc(count + 512);
-                inode_ptr->bytes_allocated = count + 512;
+                inode_ptr->file_begin = kmalloc(count + 128);
+                inode_ptr->bytes_allocated = count + 128;
         }
 
         if (file_offset + count > inode_ptr->bytes_allocated) {
-                inode_ptr->file_begin = krealloc(inode_ptr->file_begin, file_offset + count + 512);
-                inode_ptr->bytes_allocated = file_offset + count + 512;
+                inode_ptr->file_begin = krealloc(inode_ptr->file_begin, file_offset + count + 128);
+                inode_ptr->bytes_allocated = file_offset + count + 128;
         }
 
         for (int i = 0; i < count; i++) {
