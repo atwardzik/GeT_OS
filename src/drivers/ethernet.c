@@ -562,9 +562,14 @@ static int rx_frame(struct File *socket_file, void *buf, size_t count, off_t) {
 
 static struct Socket *create_socket(void) {
         for (size_t i = 1; i < WIZNET_SOCKET_COUNT; ++i) {
-                if (wiznet_network_interface.sockets[i]->taken == false) {
-                        wiznet_network_interface.sockets[i]->taken = true;
-                        return (struct Socket *) wiznet_network_interface.sockets[i];
+                struct WIZnetSocket *socket = wiznet_network_interface.sockets[i];
+                if (socket->taken == false) {
+                        socket->taken = true;
+
+                        const struct Process *current_process = scheduler_get_current_process();
+                        socket->socket.file.f_owner = current_process->pid;
+
+                        return (struct Socket *) socket;
                 }
         }
 
@@ -572,11 +577,17 @@ static struct Socket *create_socket(void) {
 }
 
 static struct Socket *create_raw_socket(void) {
-        if (wiznet_network_interface.sockets[0]->taken) {
+        struct WIZnetSocket *raw_socket = wiznet_network_interface.sockets[0];
+        if (raw_socket->taken) {
                 return ERR_PTR(ENOSOCKFREE);
         }
 
-        return (struct Socket *) wiznet_network_interface.sockets[0];
+        raw_socket->taken = true;
+
+        const struct Process *current_process = scheduler_get_current_process();
+        raw_socket->socket.file.f_owner = current_process->pid;
+
+        return (struct Socket *) raw_socket;
 }
 
 static int destroy_socket(struct Socket *sock) {
@@ -656,6 +667,7 @@ static int init_sockets(void) {
                 eth_write_mem(SN_RXBUF_SIZE(i), cmd, sizeof(cmd));
 
                 struct WIZnetSocket *socket = (struct WIZnetSocket *) kmalloc(sizeof(*socket));
+                memset(socket, 0, sizeof(*socket));
                 socket->socket.mode = CLOSED;
                 socket->txbuf_mask = memory_per_socket * 1024 - 1;
                 socket->txbuf_size_max = memory_per_socket * 1024;

@@ -216,7 +216,7 @@ int sys_socket(int domain, int type, int protocol) {
 
 int sys_bind(int sockfd, const struct sockaddr *addr, size_t addrlen) {
         const struct Process *current_process = scheduler_get_current_process();
-        if (sockfd >= current_process->files.count || sockfd < 0 || current_process->files.fdtable[sockfd] == nullptr) {
+        if (sockfd >= MAX_OPEN_FILE_DESCRIPTORS || sockfd < 0 || current_process->files.fdtable[sockfd] == nullptr) {
                 return -EBADF;
         }
 
@@ -229,7 +229,7 @@ int sys_bind(int sockfd, const struct sockaddr *addr, size_t addrlen) {
 
 int sys_listen(int sockfd, [[maybe_unused]] int backlog) {
         const struct Process *current_process = scheduler_get_current_process();
-        if (sockfd >= current_process->files.count || sockfd < 0 || current_process->files.fdtable[sockfd] == nullptr) {
+        if (sockfd >= MAX_OPEN_FILE_DESCRIPTORS || sockfd < 0 || current_process->files.fdtable[sockfd] == nullptr) {
                 return -EBADF;
         }
 
@@ -241,7 +241,7 @@ int sys_listen(int sockfd, [[maybe_unused]] int backlog) {
 
 int sys_accept(int sockfd, struct sockaddr *addr, size_t addrlen) {
         const struct Process *current_process = scheduler_get_current_process();
-        if (sockfd >= current_process->files.count || sockfd < 0 || current_process->files.fdtable[sockfd] == nullptr) {
+        if (sockfd >= MAX_OPEN_FILE_DESCRIPTORS || sockfd < 0 || current_process->files.fdtable[sockfd] == nullptr) {
                 return -EBADF;
         }
 
@@ -254,7 +254,7 @@ int sys_accept(int sockfd, struct sockaddr *addr, size_t addrlen) {
 
 int sys_connect(int sockfd, const struct sockaddr *addr, size_t addrlen) {
         const struct Process *current_process = scheduler_get_current_process();
-        if (sockfd >= current_process->files.count || sockfd < 0 || current_process->files.fdtable[sockfd] == nullptr) {
+        if (sockfd >= MAX_OPEN_FILE_DESCRIPTORS || sockfd < 0 || current_process->files.fdtable[sockfd] == nullptr) {
                 sys_write(1, "[!] There is no such socket descriptor\n", 39);
                 __asm__("bkpt   #0");
                 return -EBADF;

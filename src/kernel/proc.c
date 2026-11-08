@@ -597,6 +597,7 @@ int populate_file(struct Process *process, struct File *file) {
 static ssize_t pipe_read(struct File *file, void *buf, size_t count, off_t file_offset) {
         struct Pipe_Inode *pipe = (struct Pipe_Inode *) file->f_inode;
 
+        // TODO: check what happens when two processes read from one pipe
         while (pipe->write_offset <= pipe->read_offset || pipe->wait_for_read) {
                 struct Process *process = scheduler_get_current_process();
                 process->pstate = WAITING_FOR_RESOURCE;
@@ -649,6 +650,7 @@ static int pipe_close(struct File *file) {
                 kfree(pipe_inode->ptr);
                 kfree(pipe_inode);
                 pipe_inode = nullptr;
+                kfree(file);
         }
 }
 
