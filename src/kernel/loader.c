@@ -93,6 +93,11 @@ typedef struct {
 #define ELF32_R_TYPE(i) ((unsigned char)(i))
 #define ELF32_R_INFO(s,t) (((s)<<8)+(unsigned char)(t))
 
+typedef enum {
+        R_ARM_GLOB_DAT = 21,
+        R_ARM_RELATIVE = 23,
+} ElfRelType;
+
 
 typedef struct {
         Sword d_tag;
@@ -325,7 +330,7 @@ static struct ProcessPage *load_pages_to_ram(const void *fbytes) {
         const Elf32_EHdr *elf_header = fbytes;
         const Elf32_PHdr *phdr_table = fbytes + elf_header->e_phoff;
 
-        unsigned int bufsz = 1024; //this has to change according to phdrs
+        unsigned int bufsz = 1024; // fixme: this has to change according to phdrs
         unsigned char *buffer = kmalloc(bufsz);
         if (!buffer) {
                 return nullptr;
@@ -531,10 +536,20 @@ static int resolve_dyn_relocations(
         for (size_t i = 0; i < sections->rel_dyn_len; ++i) {
                 const Elf32_Rel *rel = &sections->rel_dyn[i];
                 const Elf32_Sym *symbol = &sections->dynsym[ELF32_R_SYM(rel->r_info)];
+                const ElfRelType type = ELF32_R_TYPE(rel->r_info);
                 const char *symbol_name = &sections->dynstr[symbol->st_name];
 
-                //fixme: is it always sb relative?
-                const uintptr_t dyn_address_replacement = (uintptr_t) ppage->static_base + get_dyn(symbol_name, dynlib);
+                uintptr_t dyn_address_replacement = 0;
+                switch (type) {
+                        case R_ARM_GLOB_DAT:
+                                dyn_address_replacement = (uintptr_t) ppage->static_base + get_dyn(symbol_name, dynlib);
+                                break;
+                        case R_ARM_RELATIVE:
+                                dyn_address_replacement = (uintptr_t) buffer + *(uint32_t *) (buffer + rel->r_offset);
+                                break;
+                        default:
+                                break;
+                }
                 if (!dyn_address_replacement) {
                         return -1; //no entry found
                 }

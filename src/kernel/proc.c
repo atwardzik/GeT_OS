@@ -16,9 +16,9 @@
 
 static constexpr size_t INITIAL_PROCESS_COUNT = 20;
 
-static constexpr int DEFAULT_PROCESS_STACK_SIZE = 2 * 1024;
+static constexpr int DEFAULT_PROCESS_STACK_SIZE = 4 * 1024;
 
-static constexpr off_t DEFAULT_PROCESS_SP_OFFSET = 1 * 1024;
+static constexpr off_t DEFAULT_PROCESS_SP_OFFSET = 3 * 1024;
 
 static constexpr int IDLE_PROCESS_STACK_SIZE = 1024;
 
