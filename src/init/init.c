@@ -61,7 +61,7 @@ void PATER_ADAMVS(int argc, char *argv[]) {
 
         while (1) {
                 printf("\x1b[96;49m[!] Running shell (gsh)\x1b[0m\n");
-                int fd = open("bin/gsh", O_BINARY, 0);
+                int fd = open("/mnt/disk0/gsh", O_BINARY, 0);
                 if (fd < 0) {
                         printf("\x1b[91;49m[!] No shell found.\x1b[0m\n");
                         __asm__("bkpt   #0");
