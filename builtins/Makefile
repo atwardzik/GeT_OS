@@ -114,10 +114,6 @@ dirs:
 $(OBJDIR)/libc.o: libc/libc.c | dirs
 	clang -Wno-missing-multilib --target=arm-none-eabi -Ilibc -std=c23 -mcpu=cortex-m33 -mfpu=fpv5-sp-d16 -ffreestanding -mthumb -fropi -frwpi -c -g -O0 libc/libc.c -o $(OBJDIR)/libc.o
 	arm-none-eabi-objcopy \
-        --only-keep-debug \
-        build/libc.o \
-        build/libc.dbg
-	arm-none-eabi-objcopy \
         --strip-debug \
         build/libc.o \
         build/libc_stripped.o
@@ -129,5 +125,5 @@ $(CRT0): crt0.s
 	$(AS) $(AS_ARGS) $< -o $(OBJDIR)/crt0.o
 
 initramfs: all
-	@cp bin/gsh bin/ls initramfs/bin/
+	# @cp bin/gsh bin/ls initramfs/bin/
 	@cp liblibc.so initramfs/lib/

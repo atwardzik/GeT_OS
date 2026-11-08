@@ -101,6 +101,8 @@ int main(int argc, char *argv[]) {
                 puts("%");
         }
 
+        free(buffer);
+
         close(fd);
         return 0;
 }

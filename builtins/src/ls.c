@@ -14,7 +14,7 @@ struct DirectoryEntry {
 };
 
 int main(int argc, char *argv[]) {
-        const int dirfd = open(argv[1], O_RDONLY | O_DIRECTORY, 0);
+        const int dirfd = open(argv[1], O_RDONLY | O_DIRECTORY, 0); // CHANGE, IF NO ARGUMENT PASS "."
         if (dirfd < 0) {
                 dprintf(2, "ls: %s: No such file or directory.", argv[1]);
                 return 1;

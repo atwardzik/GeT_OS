@@ -20,10 +20,11 @@ static char *read_html(const char *filename) {
 
         struct stat st;
         fstat(fd, &st);
-        char *buffer = malloc(st.st_size);
+        char *buffer = malloc(st.st_size + 1);
         if (!buffer) {
                 return nullptr;
         }
+        memset(buffer, 0, st.st_size + 1);
         if (read(fd, buffer, st.st_size) <= 0) {
                 free(buffer);
                 return nullptr;
@@ -43,34 +44,33 @@ static int replace_in_html(char **html, const char *token, const char *value) {
                 const size_t index = substring - *html;
                 const size_t new_len = current_len - token_len + value_len;
 
-                char *new_html = realloc(*html, new_len + 1);
+                char *new_html = malloc(new_len + 1);
                 if (!new_html) {
                         return -ENOMEM;
                 }
-                *html = new_html;
+                memset(new_html, 0, new_len + 1);
 
-                memmove(*html + index + value_len, *html + index + token_len, current_len - index - token_len + 1);
-                memcpy(*html + index, value, value_len);
+                memcpy(new_html, *html, index);             // until token occurrence
+                memcpy(new_html + index, value, value_len); // token
+                memcpy(new_html + index + value_len,        //
+                       *html + index + token_len,           // rest
+                       current_len - index - token_len + 1  //
+                );
+
+                free(*html);
+                *html = new_html;
         }
 
         return 0;
 }
 
 static int replace_server_token(char **html, const char *token) {
-#ifdef TARGET_LINUX
         if (strcmp(token, "${{TIME}}") == 0) {
-                struct timeval tv;
-                gettimeofday(&tv, nullptr);
+                const time_t current_time = time(nullptr);
+                const char *time_fmt = ctime(&current_time);
 
-                const struct tm *time = localtime(&tv.tv_sec);
-
-                char datetime[80];
-
-                strftime(datetime, sizeof(datetime), "%a %d %b %Y %H:%M:%S", time);
-
-                replace_in_html(html, token, datetime);
+                replace_in_html(html, token, time_fmt);
         }
-#endif
 
         return 0;
 }
@@ -86,28 +86,30 @@ static int replace_server_tokens(char **html) {
 
 static void *manage_connection(void *arg) {
         const int sockfd = (int) (intptr_t) arg;
-        int ret = 0;
+        int rc = 0;
 
         printf("Connection accepted\n");
 
-        char *website = read_html("/mnt/disk0/index.htm");
+        char *website = read_html("index.htm");
         if (!website) {
-                ret = -ENOENT;
+                rc = -ENOENT;
                 goto conn_close;
         }
         replace_server_tokens(&website);
         const int html_length = strlen(website);
 
-        const int header_len = strlen(http_header) - 2 + snprintf(nullptr, 0, "%i", html_length); // -2 for %i
+        const int header_len = strlen(http_header) - 2                    // -2 for "%i"
+                               + snprintf(nullptr, 0, "%i", html_length); //
         const int http_response_length = header_len + strlen(website) + 1;
 
-        char *http_response = realloc(website, http_response_length);
+        char *http_response = malloc(http_response_length);
         if (!http_response) {
-                ret = -ENOMEM;
+                rc = -ENOMEM;
                 goto conn_close;
         }
-        memmove(http_response + header_len, website, html_length);
+        memset(http_response, 0, http_response_length);
         snprintf(http_response, http_response_length, http_header, strlen(website));
+        memmove(http_response + strlen(http_response), website, html_length);
 
         write(sockfd, http_response, strlen(http_response));
         free(http_response);
@@ -116,27 +118,28 @@ conn_close:
         free(website);
         close(sockfd);
 
-        return (void *) (intptr_t) ret;
+        return (void *) (intptr_t) rc;
 }
 
-static int event_loop(void) {
+
+int main(int argc, char *argv[]) {
         while (1) {
                 int sockfd = socket(AF_INET, SOCK_STREAM, 0);
                 if (sockfd < 0) {
                         dprintf(2, "Error while trying to open socket\n");
-                        // return EXIT_FAILURE;
+                        continue;
                 }
 
                 struct sockaddr_in source = {.sin_family = AF_INET, .sin_addr.s_addr = 0, .sin_port = htons(8080)};
                 if (bind(sockfd, (struct sockaddr *) &source, sizeof(source)) < 0) {
                         dprintf(2, "Error while trying to bind\n");
-                        // return EXIT_FAILURE;
+                        continue;
                 }
 
 
                 if (listen(sockfd, 0) < 0) {
                         dprintf(2, "Error while trying to listen on port: %i\n", source.sin_port);
-                        // return EXIT_FAILURE;
+                        continue;
                 }
 
                 struct sockaddr destination = {};
@@ -149,15 +152,10 @@ static int event_loop(void) {
                         continue;
                 }
 
-                manage_connection((void *) (intptr_t) destfd);
+                const int rc = (intptr_t) manage_connection((void *) (intptr_t) destfd);
+                printf("Connection closed, rc: %i\n", rc);
+                close(sockfd);
         }
-
-        return 0;
-}
-
-
-int main(int argc, char *argv[]) {
-        event_loop();
 
         return 0;
 }

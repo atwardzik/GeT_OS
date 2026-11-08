@@ -309,7 +309,7 @@ char *strchr(const char *str, const int ch) {
 char *strstr(const char *haystack, const char *needle) {
         const size_t m = strlen(needle);
         uint64_t R;
-        uint64_t pattern_mask[CHAR_MAX + 1];
+        uint64_t pattern_mask[127 + 1];
 
         if (m == 0) {
                 return (char *) haystack;
@@ -320,7 +320,7 @@ char *strstr(const char *haystack, const char *needle) {
 
         R = ~1;
 
-        for (size_t i = 0; i <= CHAR_MAX; ++i) {
+        for (size_t i = 0; i <= 127; ++i) {
                 pattern_mask[i] = 0xffff'ffff'ffff'ffff;
         }
         for (size_t i = 0; i < m; ++i) {
