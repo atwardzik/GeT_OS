@@ -30,6 +30,7 @@ static char *read_html(const char *filename) {
                 return nullptr;
         }
 
+        close(fd);
         return buffer;
 }
 
@@ -116,7 +117,6 @@ static void *manage_connection(void *arg) {
 
 conn_close:
         free(website);
-        close(sockfd);
 
         return (void *) (intptr_t) rc;
 }

@@ -20,7 +20,16 @@ void echo(void);
 
 void rawecho(void);
 
+static void sig_handler(int signum) {
+        if (signum == SIGINT || signum == SIGTERM) {
+                return;
+        }
+}
+
 int main(void) {
+        signal(SIGTERM, sig_handler);
+        signal(SIGINT, sig_handler);
+
         chdir("/mnt/disk0/"); //for testing purposes only
         while (1) {
                 puts(" > ");
@@ -196,9 +205,14 @@ void run_program(const char *cmd) {
                 i += 1;
         }
         program_args[i] = nullptr;
+        bool bg_task = false;
+        if (strcmp(program_args[i - 1], "&") == 0) {
+                bg_task = true;
+                program_args[i - 1] = nullptr;
+        }
 
         int fd = -1;
-        const char executable_locations[3][20] = {"./", "bin/", "/mnt/disk0/"};
+        const char executable_locations[3][20] = {"./", "/bin/", "/mnt/disk0/"};
         for (i = 0; i < 3; ++i) {
                 char buf[64] = {};
                 const int path_len = strlen(executable_locations[i]);
@@ -216,14 +230,25 @@ void run_program(const char *cmd) {
                 return;
         }
 
-        spawn(fd, nullptr, nullptr, (char * const *) program_args, nullptr);
-
-        int code;
-        const int returned_pid = wait(&code);
-
-        printf("\nChild process %i exited with code: %i\n",
-               returned_pid, (char) code);
+        const pid_t pid = spawn(fd, nullptr, nullptr, (char * const *) program_args, nullptr);
         close(fd);
+        if (pid <= 0) {
+                return;
+        }
+
+        pid_t shell_pid = getpgid(0);
+        pid_t new_process_pgid = shell_pid + 1;
+        setpgid(pid, new_process_pgid);
+        if (!bg_task) {
+                ioctl(0, TTY_SPGRP, &new_process_pgid);
+
+                int code;
+                const int returned_pid = wait(&code);
+
+                printf("\nChild process %i exited with code: %i\n", returned_pid, (char) code);
+
+                ioctl(0, TTY_SPGRP, &shell_pid);
+        }
 }
 
 void perform_kill(void) {
