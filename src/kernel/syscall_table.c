@@ -21,7 +21,6 @@ syscall_fn syscall_table[] = {
         [OPEN_SVC] = (syscall_fn) sys_open,
         [CLOSE_SVC] = (syscall_fn) sys_close,
         [IOCTL_SVC] = (syscall_fn) sys_ioctl,
-        [WAIT_SVC] = (syscall_fn) sys_wait,
         [READDIR_SVC] = (syscall_fn) sys_readdir,
         [CHDIR_SVC] = (syscall_fn) sys_chdir,
         [LSEEK_SVC] = (syscall_fn) sys_lseek,
@@ -38,6 +37,8 @@ syscall_fn syscall_table[] = {
         [KILL_SVC] = (syscall_fn) sys_kill,
         [SIGNAL_SVC] = (syscall_fn) sys_signal,
         [SIGRETURN_SVC] = (syscall_fn) sys_sigreturn,
+        [WAIT_SVC] = (syscall_fn) sys_wait,
+        [WAITPID_SVC] = (syscall_fn) sys_waitpid,
 
         [SOCKET_SVC] = (syscall_fn) sys_socket,
         [BIND_SVC] = (syscall_fn) sys_bind,

@@ -849,6 +849,42 @@ pid_t sys_wait(int *stat_loc) {
         return dead_process;
 }
 
+pid_t sys_waitpid(pid_t pid, int *stat_loc, int options) {
+        struct Process *current = scheduler.current_process;
+
+        struct Process *child = nullptr;
+        int child_id = 0;
+        for (int i = 0; i < current->max_children_count; ++i) {
+                if (current->children[i] && current->children[i]->pid == pid) {
+                        child = current->children[i];
+                        child_id = i;
+                }
+        }
+        if (!child) {
+                return -ECHILD;
+        }
+
+
+        current->pstate = WAITING_FOR_CHILD_EXIT;
+        while (child->pstate != TERMINATED) {
+                save_kernelmode_and_context_switch();
+        }
+        current->pstate = RUNNING;
+
+
+        if (stat_loc) {
+                *stat_loc = child->exit_code;
+        }
+
+        //evaporate zombie process
+        const pid_t dead_process = child->pid;
+        scheduler_evaporate_process(dead_process);
+        current->children_count -= 1;
+        current->children[child_id] = nullptr;
+
+        return dead_process;
+}
+
 void run_process_init(void) {
         scheduler.current_process = &scheduler.processes[0];
         scheduler.current_process->pstate = RUNNING;

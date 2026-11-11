@@ -143,6 +143,7 @@ static void handle_etx_character(void) {
                 process = scheduler_get_current_process();
         }
 
+        // TODO: notify whole group
         if (process && process->pgid == keyboard_device_file_stream->fg_pgid) {
                 signal_notify(process, SIGINT);
         }
@@ -268,7 +269,7 @@ void write_to_keyboard_buffer(int c) {
 
 wake_up_if_applicable:
         character_present = true;
-        if (!tty_canonical_mode || (tty_canonical_mode && newline_present)) {
+        if (!tty_canonical_mode || (tty_canonical_mode && newline_present)) { // TODO: AND QUEUE TOP EXISTS
                 wake_up_interruptible(&keyboard_device_file_stream->read_wait); //FIXME: not this proceess!!
         }
 }

@@ -48,7 +48,11 @@ sighandler_t signal(int signum, sighandler_t handler) {
 }
 
 pid_t wait(int *stat_loc) {
-        SYSCALL_RETURN(int, WAIT_SVC)
+        SYSCALL_RETURN(pid_t, WAIT_SVC)
+}
+
+pid_t waitpid(pid_t pid, int *stat_loc, int options) {
+        SYSCALL_RETURN(pid_t, WAITPID_SVC)
 }
 
 int pipe(int pipefd[2]) {
