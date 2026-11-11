@@ -764,7 +764,34 @@ void sys_exit(int status) {
         context_switch();
 }
 
+static void kill_process_group(const pid_t pgid, const int sig) {
+        for (int i = 0; i < scheduler.max_processes; ++i) {
+                if (scheduler.processes[i].pgid == pgid) {
+                        sys_kill(scheduler.processes[i].pid, sig);
+                }
+        }
+}
+
+static void kill_current_process_group(const int sig) {
+        const struct Process *process = scheduler.current_process;
+
+        for (int i = 0; i < process->children_count; ++i) {
+                sys_kill(process->children[i]->pid, sig);
+        }
+
+        sys_kill(process->pid, sig);
+}
+
 void sys_kill(const pid_t pid, int sig) {
+        if (pid == 0) {
+                kill_current_process_group(sig);
+                return;
+        }
+        if (pid < -1) {
+                kill_process_group(-pid, sig);
+                return;
+        }
+
         struct Process *process = scheduler_get_process_by_pid(pid);
         if (!process) {
                 return;
@@ -775,6 +802,9 @@ void sys_kill(const pid_t pid, int sig) {
                 return;
         }
         // TODO: SEND OTHER SIGNALS
+
+
+        // KILL PROCESS BY ALL MEANS
 
         signal_notify(process->parent, SIGCHLD);
         for (size_t i = 0; i < process->children_count; ++i) {

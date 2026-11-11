@@ -134,19 +134,12 @@ static void handle_etx_character(void) {
         tty_echo('^');
         tty_echo('C');
 
-        struct Process *process = nullptr;
         const struct Process *wq_top = top_from_wait_queue(&keyboard_device_file_stream->read_wait);
         if (wq_top && wq_top->pgid == keyboard_device_file_stream->fg_pgid) {
-                process = pop_from_wait_queue(&keyboard_device_file_stream->read_wait);
-        }
-        else {
-                process = scheduler_get_current_process();
+                pop_from_wait_queue(&keyboard_device_file_stream->read_wait);
         }
 
-        // TODO: notify whole group
-        if (process && process->pgid == keyboard_device_file_stream->fg_pgid) {
-                signal_notify(process, SIGINT);
-        }
+        sys_kill(-keyboard_device_file_stream->fg_pgid, SIGINT);
 }
 
 static void handle_backspace_character(void) {
@@ -269,7 +262,7 @@ void write_to_keyboard_buffer(int c) {
 
 wake_up_if_applicable:
         character_present = true;
-        if (!tty_canonical_mode || (tty_canonical_mode && newline_present)) { // TODO: AND QUEUE TOP EXISTS
+        if (!tty_canonical_mode || (tty_canonical_mode && newline_present)) {   // TODO: AND QUEUE TOP EXISTS
                 wake_up_interruptible(&keyboard_device_file_stream->read_wait); //FIXME: not this proceess!!
         }
 }
