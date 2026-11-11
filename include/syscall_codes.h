@@ -31,6 +31,7 @@
 #define SIGNAL_SVC      26
 #define SIGRETURN_SVC   27
 #define WAIT_SVC        28
+#define WAITPID_SVC     29
 
 #define SOCKET_SVC      30
 #define BIND_SVC        31

@@ -173,6 +173,8 @@ int populate_file(struct Process *process, struct File *file);
  */
 pid_t sys_wait(int *stat_loc);
 
+pid_t sys_waitpid(pid_t pid, int *stat_loc, int options);
+
 /**
  * Sets current state to TERMINATED and performs context switch
  *
