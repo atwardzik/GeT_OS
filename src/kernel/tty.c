@@ -33,6 +33,7 @@
 #include "ascii_char_codes.h"
 #include "config.h"
 #include "errno.h"
+#include "pin_config.h"
 #include "signal.h"
 
 
@@ -43,11 +44,11 @@ void init_tty() {
         }
 
         if (kconf->io_dev.ps2_keyboard.enabled) {
-                init_keyboard(27, 26);
+                init_keyboard(PS2_DAT, PS2_CLK);
         }
 
         if (kconf->io_dev.vga_display.enabled) {
-                vga_init(9, 10, 3);
+                vga_init(VGA_HSYNC, VGA_VSYNC, VGA_RED0);
 
                 vga_setup_cursor(0, 0, (BLACK << 4 | WHITE), 500'000);
         }

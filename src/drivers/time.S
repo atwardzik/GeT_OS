@@ -290,6 +290,12 @@ delay_us:
 
         bx      lr
 
+/**
+ * Sets up timer in us.
+ *  r0 - microseconds for timer alarm
+ *  r1 -
+ * */
+
 #ifdef ARCH_RP2040
 .align 4
 TIMER_BASE:             .word 0x40054000

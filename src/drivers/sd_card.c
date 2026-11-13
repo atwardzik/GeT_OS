@@ -6,13 +6,11 @@
 
 #include "errno.h"
 #include "gpio.h"
+#include "pin_config.h"
 #include "spi.h"
 #include "time.h"
 #include "tty.h"
 #include "kernel/memory.h"
-
-static constexpr int SD_CS = 13;
-static constexpr int SD_SPI_BLOCK = 1;
 
 static constexpr uint8_t CMD0 = 0;
 static constexpr uint8_t CMD8 = 8;
@@ -59,7 +57,7 @@ static int sd_card_read512_block(const uint32_t block_number, char *buffer) {
         }
 
         spi_tx(SD_SPI_BLOCK, 0xff);
-        clr_pin(SD_CS);
+        clr_pin(SD_SPI_CS);
 
         sd_write_cmd(CMD17, block_number, 0);
         if (sd_read_res1() == 0xff) {
@@ -76,7 +74,7 @@ static int sd_card_read512_block(const uint32_t block_number, char *buffer) {
         spi_rx(SD_SPI_BLOCK);
         spi_rx(SD_SPI_BLOCK);
 
-        set_pin(SD_CS);
+        set_pin(SD_SPI_CS);
         return 0;
 }
 
@@ -86,7 +84,7 @@ static int sd_card_write512_block(uint32_t block_number, char *buffer) {
         }
 
         spi_tx(SD_SPI_BLOCK, 0xff);
-        clr_pin(SD_CS);
+        clr_pin(SD_SPI_CS);
 
         sd_write_cmd(CMD24, block_number, 0);
         if (sd_read_res1() == 0xff) {
@@ -108,7 +106,7 @@ static int sd_card_write512_block(uint32_t block_number, char *buffer) {
         }
 
         spi_tx(SD_SPI_BLOCK, 0xff);
-        set_pin(SD_CS);
+        set_pin(SD_SPI_CS);
         spi_tx(SD_SPI_BLOCK, 0xff);
 
         return 0;
@@ -154,7 +152,6 @@ static int sd_card_write(uint32_t block_number, size_t block_size, char *buffer)
         return 0;
 }
 
-//FIXME: deassert CS on failure
 struct HardDriveOperations *init_sd_card(void) {
         printk_status_init("Initializing SD card");
         spi_set_baudrate(SD_SPI_BLOCK, 2, 191); // 150[MHz] / 2*(1+3) = 390.625 [kHz]
@@ -162,14 +159,14 @@ struct HardDriveOperations *init_sd_card(void) {
         printk_status_step();
 
         // Power up
-        set_pin(SD_CS);
+        set_pin(SD_SPI_CS);
         for (int i = 0; i < 10; ++i) {
                 spi_tx(1, 0xff);
         }
         printk_status_step();
 
         // Reset into SPI mode
-        clr_pin(SD_CS);
+        clr_pin(SD_SPI_CS);
         spi_tx(SD_SPI_BLOCK, 0xff);
         sd_write_cmd(CMD0, 0, 0x95);
         int i = 0;
@@ -261,7 +258,7 @@ struct HardDriveOperations *init_sd_card(void) {
 
         bool is_sdhc = (ocr[0] & 0x40) != 0;
 
-        set_pin(SD_CS);
+        set_pin(SD_SPI_CS);
 
         struct HardDriveOperations *hd_op = kmalloc(sizeof(*hd_op));
         hd_op->read_block = sd_card_read;
@@ -275,7 +272,7 @@ struct HardDriveOperations *init_sd_card(void) {
         return hd_op;
 
 error_ret:
-        set_pin(SD_CS);
+        set_pin(SD_SPI_CS);
         printk_status_finish(-1);
         return nullptr;
 }

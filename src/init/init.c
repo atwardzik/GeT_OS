@@ -4,6 +4,7 @@
 #include "init.h"
 
 #include "libc.h"
+#include "pin_config.h"
 #include "drivers/gpio.h"
 #include "drivers/time.h"
 
@@ -21,10 +22,9 @@ static void proc1_terminate_signal_handler(int signum) {
 
 static void proc1(void) {
         signal(SIGTERM, proc1_terminate_signal_handler);
-        setpgid(0, 1);
 
         while (1) {
-                xor_pin(11);
+                xor_pin(LED1);
                 delay_ms(250);
         }
 }
@@ -69,14 +69,11 @@ void PATER_ADAMVS(int argc, char *argv[]) {
 
                 char *const program_args[] = {"gsh", nullptr};
                 [[maybe_unused]] pid_t shell_pid = spawn(fd, nullptr, nullptr, program_args, nullptr);
+                setpgid(shell_pid, 1);
 
-        process_wait:
                 int code;
-                const int returned_pid = wait(&code);
+                const int returned_pid = waitpid(shell_pid, &code, 0);
 
-                if (returned_pid != shell_pid) {
-                        goto process_wait; //implement waitpid syscall
-                }
                 printf("\n\x1b[96;49m[PATER ADAMVS]\x1b[0m Child process %i exited with code: %i\n",
                        returned_pid, code);
                 close(fd);

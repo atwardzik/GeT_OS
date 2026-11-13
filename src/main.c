@@ -1,3 +1,4 @@
+#include "pin_config.h"
 #include "tty.h"
 #include "drivers/gpio.h"
 #include "drivers/sd_card.h"
@@ -22,21 +23,20 @@ int main(void) {
         setup_internal_clk();
         reset_subsys();
 
-        GPIO_function_select(15, 1); // SD_SPI_TX
-        GPIO_function_select(14, 1); // SD_SPI_CLK
-        init_pin_output(13);         // SD_CS
-        GPIO_function_select(12, 1); // SD_SPI_RX
-        output_enable_pin(15);
-        output_enable_pin(14);
-        output_enable_pin(12);
-        spi_init(1, 2, 191, 0); // 150[MHz] / 2*(1+3) = 390.625 [kHz]
+        GPIO_function_select(SD_SPI_TX, 1);
+        GPIO_function_select(SD_SPI_CLK, 1);
+        init_pin_output(SD_SPI_CS);
+        GPIO_function_select(SD_SPI_RX, 1);
+        output_enable_pin(SD_SPI_TX);
+        output_enable_pin(SD_SPI_CLK);
+        output_enable_pin(SD_SPI_RX);
+        spi_init(SD_SPI_BLOCK, 2, 191, 0); // 150[MHz] / 2*(1+3) = 390.625 [kHz]
 #endif
         init_tty();
         printk("   --- \x1b[91;49mG\x1b[93;49me\x1b[92;49mT \x1b[94;49mO\x1b[95;49mS\x1b[0m Kernel startup ---\n\n");
         int res;
 
-        init_pin_output(25);
-        init_pin_output(11);
+        init_pin_output(LED1);
 
         printk_status_init("Initializing scheduler");
         void *msp;

@@ -7,6 +7,7 @@
 
 #include "errno.h"
 #include "gpio.h"
+#include "pin_config.h"
 #include "spi.h"
 #include "time.h"
 #include "fs/file.h"
@@ -15,9 +16,6 @@
 #include "kernel/memory.h"
 #include "kernel/mutex.h"
 
-static constexpr int ETH_CS_PIN = 17;
-static constexpr int ETH_INT_PIN = 21;
-static constexpr int ETH_SPI_BLOCK = 0;
 static constexpr uint16_t WIZNET_SOCKET_COUNT = 4;
 static constexpr uint16_t S0_TX_BASE = 0x4000;
 static constexpr uint16_t S0_RX_BASE = 0x6000;
@@ -112,25 +110,21 @@ void eth_irq(void);
  * Sets up SPI interface for communication with WIZnet W5100S
  */
 static void setup_eth_gpio(void) {
-        //spi0 rx
-        GPIO_function_select(16, 1);
-        output_enable_pin(16);
+        GPIO_function_select(ETH_SPI_RX, 1);
+        output_enable_pin(ETH_SPI_RX);
 
-        //spi0 sck
-        GPIO_function_select(18, 1);
-        output_enable_pin(18);
+        GPIO_function_select(ETH_SPI_CLK, 1);
+        output_enable_pin(ETH_SPI_CLK);
 
-        //spi0 tx
-        GPIO_function_select(19, 1);
-        output_enable_pin(19);
+        GPIO_function_select(ETH_SPI_TX, 1);
+        output_enable_pin(ETH_SPI_TX);
 
-        //manual CS
-        init_pin_output(ETH_CS_PIN);
+        init_pin_output(ETH_SPI_CS);
 
-        spi_init(0, 2, 15, 0);
+        spi_init(ETH_SPI_BLOCK, 2, 15, 0);
 
-        init_pin_input_with_pull(ETH_INT_PIN, true);
-        set_irq_pin_enabled_edge_low(ETH_INT_PIN);
+        init_pin_input_with_pull(ETH_INT, true);
+        set_irq_pin_enabled_edge_low(ETH_INT);
         set_isr(IO_IRQ_BANK0, eth_irq); //FIXME: implement global pin interrupt handler and determine pin inside
 }
 
@@ -149,7 +143,7 @@ static void eth_write_mem(uint16_t reg_offset, const uint8_t *data, const size_t
         mutex_lock(&eth_spi_mutex);
 
         for (size_t i = 0; i < len; i++) {
-                clr_pin(ETH_CS_PIN);
+                clr_pin(ETH_SPI_CS);
 
                 spi_tx(ETH_SPI_BLOCK, 0xf0);
                 spi_tx(ETH_SPI_BLOCK, reg_offset >> 8);
@@ -158,7 +152,7 @@ static void eth_write_mem(uint16_t reg_offset, const uint8_t *data, const size_t
                 spi_tx(ETH_SPI_BLOCK, data[i]);
 
                 reg_offset += 1;
-                set_pin(ETH_CS_PIN);
+                set_pin(ETH_SPI_CS);
         }
 
         mutex_unlock(&eth_spi_mutex);
@@ -174,7 +168,7 @@ static void eth_read_mem(uint16_t reg_offset, uint8_t *buf, const size_t len) {
         mutex_lock(&eth_spi_mutex);
 
         for (size_t i = 0; i < len; i++) {
-                clr_pin(ETH_CS_PIN);
+                clr_pin(ETH_SPI_CS);
                 spi_tx(ETH_SPI_BLOCK, 0x0f);
 
                 spi_tx(ETH_SPI_BLOCK, reg_offset >> 8);
@@ -183,14 +177,14 @@ static void eth_read_mem(uint16_t reg_offset, uint8_t *buf, const size_t len) {
                 buf[i] = spi_rx(ETH_SPI_BLOCK);
 
                 reg_offset += 1;
-                set_pin(ETH_CS_PIN);
+                set_pin(ETH_SPI_CS);
         }
 
         mutex_unlock(&eth_spi_mutex);
 }
 
 void eth_irq() {
-        clr_interrupt(ETH_INT_PIN);
+        clr_interrupt(ETH_INT);
 
         uint8_t irq[4];
         eth_read_mem(SN_IR(0), irq, 1);
