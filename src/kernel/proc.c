@@ -895,11 +895,11 @@ pid_t sys_waitpid(pid_t pid, int *stat_loc, int options) {
         }
 
 
-        current->pstate = WAITING_FOR_CHILD_EXIT;
         while (child->pstate != TERMINATED) {
+                current->pstate = WAITING_FOR_CHILD_EXIT;
                 save_kernelmode_and_context_switch();
+                current->pstate = RUNNING;
         }
-        current->pstate = RUNNING;
 
 
         if (stat_loc) {

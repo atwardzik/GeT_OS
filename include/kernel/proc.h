@@ -98,7 +98,7 @@ void create_process_stack_frame(void **initial_sp, void *lr, void *pc, void *exc
  * Performs context switch without saving the current process. Scheduler
  * chooses a new process and switches to it.
  */
-[[noreturn]] void context_switch(void);
+void context_switch(void);
 
 /**
  * Performs standard context switch, i.e. the current process was in user mode.
@@ -106,7 +106,7 @@ void create_process_stack_frame(void **initial_sp, void *lr, void *pc, void *exc
  * The context of the current process is saved on it's PSP, scheduler chooses
  * a new process and switches to it.
  */
-[[noreturn]] void save_usermode_and_context_switch(void);
+void save_usermode_and_context_switch(void);
 
 /**
  * Similar to standard context switch, but the current process was in kernel mode.
@@ -114,7 +114,7 @@ void create_process_stack_frame(void **initial_sp, void *lr, void *pc, void *exc
  * The context of the current process is saved on it's MSP, scheduler chooses
  * a new process and switches to it.
  */
-[[noreturn]] void save_kernelmode_and_context_switch(void);
+void save_kernelmode_and_context_switch(void);
 
 
 pid_t create_process_init(void (*process_entry_ptr)(void), struct VFS_Inode *root);
