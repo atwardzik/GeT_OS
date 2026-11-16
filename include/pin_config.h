@@ -47,7 +47,7 @@
  * Ethernet Chip
  */
 
-#define ETH_SPI_TX       15
+#define ETH_SPI_TX       19
 #define ETH_SPI_RX       16
 #define ETH_SPI_CLK      18
 #define ETH_SPI_CS       17
