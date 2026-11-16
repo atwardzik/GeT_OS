@@ -417,6 +417,7 @@ static int FAT16_close(struct File *file) {
                 kfree(file->f_inode);
         }
 
+        file->f_inode = nullptr;
         kfree(file);
 }
 
