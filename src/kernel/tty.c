@@ -51,6 +51,8 @@ void init_tty() {
                 vga_init(VGA_HSYNC, VGA_VSYNC, VGA_RED0);
 
                 vga_setup_cursor(0, 0, (BLACK << 4 | WHITE), 500'000);
+
+                monitor_tm_init();
         }
 }
 

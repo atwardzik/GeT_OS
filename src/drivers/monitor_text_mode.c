@@ -12,7 +12,6 @@ extern uint8_t __screen_buffer_start__[];
 extern uint8_t __screen_buffer_length__[];
 
 uint8_t *const screen_buffer_ptr = __screen_buffer_start__;
-const uint8_t *const screen_length_ptr = __screen_buffer_length__;
 
 
 struct SingleChar {
@@ -37,6 +36,10 @@ static struct {
         (BLACK << 4 | WHITE),
         (struct CharBuffer *) screen_buffer_ptr
 };
+
+void monitor_tm_init(void) {
+        memset(screen_buffer_ptr, 0, (uintptr_t) __screen_buffer_length__);
+}
 
 static void move_buffer_position_up(void) {
         if (ScreenWriter.current_row_position != 0) {

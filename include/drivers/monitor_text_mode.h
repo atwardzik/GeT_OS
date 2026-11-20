@@ -5,6 +5,8 @@
 #ifndef OS_MONITOR_TEXT_MODE_H
 #define OS_MONITOR_TEXT_MODE_H
 
+void monitor_tm_init(void);
+
 void monitor_tm_write_byte(int c);
 
 void monitor_tm_insert_byte(int c);
